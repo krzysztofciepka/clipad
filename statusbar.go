@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -60,11 +61,7 @@ func (s StatusBar) View() string {
 	if gap < 1 {
 		gap = 1
 	}
-	padding := ""
-	for i := 0; i < gap; i++ {
-		padding += " "
-	}
 
-	bar := left + padding + right
+	bar := left + strings.Repeat(" ", gap) + right
 	return statusBarStyle.Width(s.width).Render(bar)
 }

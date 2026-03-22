@@ -255,7 +255,7 @@ func (m model) handleNewNoteInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.inputMode = inputNone
 		return m, nil
-	case "esc":
+	case "esc", "ctrl+c":
 		m.inputMode = inputNone
 		return m, nil
 	}
@@ -281,7 +281,7 @@ func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inputMode = inputNone
 		}
 		return m, nil
-	case "esc":
+	case "esc", "ctrl+c":
 		m.inputMode = inputNone
 		return m, nil
 	case "up":
@@ -347,7 +347,7 @@ func (m model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.inputMode = inputNone
-	case "n", "esc":
+	case "n", "esc", "ctrl+c":
 		m.inputMode = inputNone
 	}
 	return m, nil
@@ -415,7 +415,8 @@ func (m *model) createAndOpenNote(relPath string) {
 		relPath += ".md"
 	}
 	fullPath := filepath.Join(m.vault, relPath)
-	if !strings.HasPrefix(filepath.Clean(fullPath), filepath.Clean(m.vault)) {
+	vaultPrefix := filepath.Clean(m.vault) + string(filepath.Separator)
+	if filepath.Clean(fullPath) != filepath.Clean(m.vault) && !strings.HasPrefix(filepath.Clean(fullPath), vaultPrefix) {
 		m.errMsg = "Path must be within the vault"
 		return
 	}
