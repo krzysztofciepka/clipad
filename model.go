@@ -298,6 +298,10 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.openFile(node.Path)
+			m.activePanel = editorPanel
+			m.editorMode = modeEdit
+			cmd := m.editor.Focus()
+			return m, cmd
 		}
 	case "/":
 		m.inputMode = inputFilter
@@ -329,17 +333,34 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "esc" {
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingSwitchFile
+			m.pendingSwitchPath = m.currentFile
+			return m, nil
+		}
+		m.activePanel = treePanel
+		m.editor.Blur()
+		// Switch to preview mode so the note shows as read-only
+		if m.currentFile != "" {
+			content := m.editor.Value()
+			vp := viewport.New(m.editorWidth-2, m.editorHeight)
+			vp.SetContent(wordWrap(content, m.editorWidth-4))
+			m.preview = vp
+			m.editorMode = modePreview
+		}
+		return m, nil
+	}
+
 	if m.editorMode == modePreview {
 		var cmd tea.Cmd
 		m.preview, cmd = m.preview.Update(msg)
 		return m, cmd
 	}
 
-	oldValue := m.editor.Value()
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
-	if m.editor.Value() != oldValue {
-	}
 	return m, cmd
 }
 
