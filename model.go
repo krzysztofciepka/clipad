@@ -521,6 +521,7 @@ func (m model) handleReplaceSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if count == 0 {
 			m.errMsg = "No matches found"
 			m.inputMode = inputNone
+			m.editorMode = modeEdit
 			return m, nil
 		}
 		m.replaceSearchTerm = term
@@ -531,6 +532,7 @@ func (m model) handleReplaceSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "esc":
 		m.inputMode = inputNone
+		m.editorMode = modeEdit
 		return m, nil
 	case "ctrl+q", "ctrl+c":
 		if m.isDirty() {
@@ -555,10 +557,12 @@ func (m model) handleReplaceWith(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		count := strings.Count(content, m.replaceSearchTerm)
 		m.errMsg = fmt.Sprintf("Replaced %d occurrence(s)", count)
 		m.inputMode = inputNone
+		m.editorMode = modeEdit
 		m.replaceSearchTerm = ""
 		return m, nil
 	case "esc":
 		m.inputMode = inputNone
+		m.editorMode = modeEdit
 		m.replaceSearchTerm = ""
 		m.errMsg = ""
 		return m, nil
