@@ -687,14 +687,22 @@ func (m model) togglePreview() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) recalcLayout() {
-	if m.width < 60 || m.height < 15 {
-		return
-	}
-
 	m.treeWidth = m.width / 4
+	if m.treeWidth < 15 {
+		m.treeWidth = 15
+	}
 	m.editorWidth = m.width - m.treeWidth
+	if m.editorWidth < 20 {
+		m.editorWidth = 20
+	}
 	m.treeHeight = m.height - 2
+	if m.treeHeight < 1 {
+		m.treeHeight = 1
+	}
 	m.editorHeight = m.height - 2
+	if m.editorHeight < 1 {
+		m.editorHeight = 1
+	}
 
 	m.tree.width = m.treeWidth
 	m.tree.height = m.treeHeight
@@ -712,10 +720,7 @@ func (m model) View() string {
 		return "Loading..."
 	}
 
-	if m.width < 60 || m.height < 15 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center,
-			"Terminal too small\nMinimum: 60x15")
-	}
+
 
 	treeView := m.tree.View(m.activePanel == treePanel)
 
