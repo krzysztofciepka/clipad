@@ -687,11 +687,11 @@ func (m model) togglePreview() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) recalcLayout() {
-	m.treeHeight = m.height - 2
+	m.treeHeight = m.height - 1
 	if m.treeHeight < 1 {
 		m.treeHeight = 1
 	}
-	m.editorHeight = m.height - 2
+	m.editorHeight = m.height - 1
 	if m.editorHeight < 1 {
 		m.editorHeight = 1
 	}
