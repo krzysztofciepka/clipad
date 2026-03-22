@@ -696,8 +696,8 @@ func (m *model) recalcLayout() {
 		m.editorHeight = 1
 	}
 
-	// Hide tree on narrow terminals
-	if m.width < 80 {
+	// Hide tree on very narrow terminals
+	if m.width < 50 {
 		m.treeWidth = 0
 		m.editorWidth = m.width
 	} else {
