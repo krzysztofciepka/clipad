@@ -40,7 +40,8 @@ func (s StatusBar) View() string {
 		statusKeyStyle.Render("^N") + " new  "
 
 	if s.treeActive {
-		left += statusKeyStyle.Render("^D") + " del  "
+		left += statusKeyStyle.Render("^D") + " del  " +
+			statusKeyStyle.Render("^F") + " folder  "
 	}
 
 	left += statusKeyStyle.Render("^Q") + " quit  " +

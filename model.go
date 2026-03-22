@@ -47,6 +47,7 @@ const (
 	inputPluginConfig
 	inputPluginPrompt
 	inputPluginDiff
+	inputNewFolder
 )
 
 type model struct {
@@ -82,6 +83,8 @@ type model struct {
 	pendingAction     pendingActionType
 	pendingSwitchPath string
 
+	newFolderInput textinput.Model
+
 	errMsg string
 
 	// Plugin system
@@ -109,12 +112,17 @@ func newModel(vault string, plugins []Plugin) model {
 	pi.Placeholder = "Enter prompt..."
 	pi.CharLimit = 500
 
+	nf := textinput.New()
+	nf.Placeholder = "folder name"
+	nf.CharLimit = 256
+
 	m := model{
 		vault:             vault,
 		activePanel:       treePanel,
 		editorMode:        modeEdit,
 		editor:            newEditor(),
 		filterInput:       fi,
+		newFolderInput:    nf,
 		plugins:           plugins,
 		pluginPromptInput: pi,
 	}
@@ -272,6 +280,11 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if node != nil && !node.IsDir {
 			m.inputMode = inputConfirmDelete
 		}
+	case "ctrl+f":
+		m.inputMode = inputNewFolder
+		m.newFolderInput.SetValue("")
+		cmd := m.newFolderInput.Focus()
+		return m, cmd
 	default:
 		// Auto-switch to editor on printable input when a file is open
 		if m.currentFile != "" && msg.Type == tea.KeyRunes {
@@ -306,6 +319,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleDeleteConfirm(msg)
 	case inputUnsavedGuard:
 		return m.handleUnsavedGuard(msg)
+	case inputNewFolder:
+		return m.handleNewFolder(msg)
 	case inputPluginSelect:
 		return m.handlePluginSelect(msg)
 	case inputPluginConfig:
@@ -410,6 +425,51 @@ func (m model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.inputMode = inputNone
 	}
 	return m, nil
+}
+
+func (m model) handleNewFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		name := m.newFolderInput.Value()
+		if name == "" {
+			return m, nil
+		}
+		// Determine parent dir from selected tree node
+		dir := m.vault
+		node := m.tree.selectedNode()
+		if node != nil {
+			if node.IsDir {
+				dir = node.Path
+			} else {
+				dir = filepath.Dir(node.Path)
+			}
+		}
+		folderPath := filepath.Join(dir, name)
+		if err := os.MkdirAll(folderPath, 0o755); err != nil {
+			m.errMsg = fmt.Sprintf("Create folder failed: %v", err)
+			m.inputMode = inputNone
+			return m, nil
+		}
+		// Create a placeholder note so the folder shows in the tree
+		os.WriteFile(filepath.Join(folderPath, "untitled.md"), []byte(""), 0o644)
+		m.refreshTree()
+		m.inputMode = inputNone
+		m.errMsg = ""
+		return m, nil
+	case "esc":
+		m.inputMode = inputNone
+		return m, nil
+	case "ctrl+q", "ctrl+c":
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.newFolderInput, cmd = m.newFolderInput.Update(msg)
+	return m, cmd
 }
 
 func (m model) handleUnsavedGuard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -719,6 +779,9 @@ func (m model) View() string {
 	} else if m.inputMode == inputPluginDiff {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Accept changes? (y/n)")
+	} else if m.inputMode == inputNewFolder {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"New folder: " + m.newFolderInput.View())
 	} else if m.inputMode == inputConfirmDelete {
 		node := m.tree.selectedNode()
 		name := ""
