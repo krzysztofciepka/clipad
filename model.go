@@ -557,7 +557,7 @@ func (m model) View() string {
 	}
 
 	var rightView string
-	if m.currentFile == "" {
+	if m.currentFile == "" && m.newNoteDir == "" {
 		placeholder := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			Padding(1, 2).
