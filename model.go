@@ -136,14 +136,7 @@ func (m model) isDirty() bool {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, warmRendererCmd())
-}
-
-func warmRendererCmd() tea.Cmd {
-	return func() tea.Msg {
-		getRenderer(80) // pre-warm with a reasonable default width
-		return nil
-	}
+	return textarea.Blink
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -498,6 +491,13 @@ func (m *model) previewSelectedFile() *TreeNode {
 		return nil
 	}
 	m.openFile(node.Path)
+	// Switch to preview mode immediately with raw text so keystrokes
+	// don't get typed into the editor while waiting for markdown render
+	content := m.editor.Value()
+	vp := viewport.New(m.editorWidth-2, m.editorHeight)
+	vp.SetContent(content)
+	m.preview = vp
+	m.editorMode = modePreview
 	return node
 }
 
