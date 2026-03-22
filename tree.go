@@ -55,6 +55,19 @@ func (tp *TreePanel) rebuildItems() {
 	}
 }
 
+func (tp *TreePanel) clampOffset() {
+	// Ensure cursor is visible after height change
+	if tp.cursor < tp.offset {
+		tp.offset = tp.cursor
+	}
+	if tp.height > 0 && tp.cursor >= tp.offset+tp.height {
+		tp.offset = tp.cursor - tp.height + 1
+	}
+	if tp.offset < 0 {
+		tp.offset = 0
+	}
+}
+
 func (tp *TreePanel) moveUp() {
 	if tp.cursor > 0 {
 		tp.cursor--

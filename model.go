@@ -707,6 +707,7 @@ func (m *model) recalcLayout() {
 
 	m.tree.width = m.treeWidth
 	m.tree.height = m.treeHeight
+	m.tree.clampOffset()
 
 	setEditorSize(&m.editor, m.editorWidth, m.editorHeight)
 
