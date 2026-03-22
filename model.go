@@ -150,6 +150,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case previewReadyMsg:
+		// Only apply if we're still on the same file
+		if msg.path == m.currentFile {
+			vp := viewport.New(msg.width-2, msg.height)
+			vp.SetContent(msg.rendered)
+			m.preview = vp
+			m.editorMode = modePreview
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -251,10 +261,14 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		m.tree.moveUp()
-		m.previewSelectedFile()
+		if node := m.previewSelectedFile(); node != nil {
+			return m, renderPreviewCmd(node.Path, m.editor.Value(), m.editorWidth, m.editorHeight)
+		}
 	case "down", "j":
 		m.tree.moveDown()
-		m.previewSelectedFile()
+		if node := m.previewSelectedFile(); node != nil {
+			return m, renderPreviewCmd(node.Path, m.editor.Value(), m.editorWidth, m.editorHeight)
+		}
 	case "enter":
 		node := m.tree.toggleOrSelect()
 		if node != nil {
@@ -465,23 +479,35 @@ func (m *model) openFile(path string) {
 	m.errMsg = ""
 }
 
-func (m *model) previewSelectedFile() {
+type previewReadyMsg struct {
+	path     string
+	rendered string
+	width    int
+	height   int
+}
+
+func (m *model) previewSelectedFile() *TreeNode {
 	node := m.tree.selectedNode()
 	if node == nil || node.IsDir {
-		return
+		return nil
 	}
 	if m.isDirty() {
-		return
+		return nil
 	}
 	if node.Path == m.currentFile && m.editorMode == modePreview {
-		return
+		return nil
 	}
 	m.openFile(node.Path)
-	// Show rendered markdown while browsing
-	vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight)
-	if err == nil {
-		m.preview = vp
-		m.editorMode = modePreview
+	return node
+}
+
+func renderPreviewCmd(path, content string, width, height int) tea.Cmd {
+	return func() tea.Msg {
+		rendered, err := renderMarkdown(content, width)
+		if err != nil {
+			return nil
+		}
+		return previewReadyMsg{path: path, rendered: rendered, width: width, height: height}
 	}
 }
 
