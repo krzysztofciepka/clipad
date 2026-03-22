@@ -69,9 +69,9 @@ type model struct {
 
 	preview viewport.Model
 
-	currentFile string
-	dirty       bool
-	newNoteDir  string // non-empty when editing a new unsaved note; holds the target directory
+	currentFile  string
+	cleanContent string // content as last saved/loaded — dirty = editor differs from this
+	newNoteDir   string // non-empty when editing a new unsaved note; holds the target directory
 
 	inputMode     inputMode
 	filterInput   textinput.Model
@@ -131,6 +131,10 @@ func newModel(vault string, plugins []Plugin) model {
 	return m
 }
 
+func (m model) isDirty() bool {
+	return m.editor.Value() != m.cleanContent
+}
+
 func (m model) Init() tea.Cmd {
 	return textarea.Blink
 }
@@ -178,7 +182,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+q", "ctrl+c":
-			if m.dirty {
+			if m.isDirty() {
 				m.inputMode = inputUnsavedGuard
 				m.pendingAction = pendingQuit
 				return m, nil
@@ -190,7 +194,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+n":
-			if m.dirty {
+			if m.isDirty() {
 				m.inputMode = inputUnsavedGuard
 				m.pendingAction = pendingNewNote
 				return m, nil
@@ -229,11 +233,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.activePanel == editorPanel && m.editorMode == modeEdit {
 		var cmd tea.Cmd
-		oldValue := m.editor.Value()
 		m.editor, cmd = m.editor.Update(msg)
-		if m.editor.Value() != oldValue {
-			m.dirty = true
-		}
 		cmds = append(cmds, cmd)
 	}
 
@@ -249,7 +249,7 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		node := m.tree.toggleOrSelect()
 		if node != nil {
-			if m.dirty {
+			if m.isDirty() {
 				m.inputMode = inputUnsavedGuard
 				m.pendingAction = pendingSwitchFile
 				m.pendingSwitchPath = node.Path
@@ -292,7 +292,6 @@ func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
 	if m.editor.Value() != oldValue {
-		m.dirty = true
 	}
 	return m, cmd
 }
@@ -324,7 +323,7 @@ func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.filterCursor < len(m.filterResults) {
 			path := m.filterResults[m.filterCursor].Path
 			m.inputMode = inputNone
-			if m.dirty {
+			if m.isDirty() {
 				m.inputMode = inputUnsavedGuard
 				m.pendingAction = pendingSwitchFile
 				m.pendingSwitchPath = path
@@ -356,7 +355,7 @@ func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "ctrl+q":
-		if m.dirty {
+		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
 			return m, nil
@@ -370,7 +369,7 @@ func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.togglePreview()
 	case "ctrl+n":
 		m.inputMode = inputNone
-		if m.dirty {
+		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingNewNote
 			return m, nil
@@ -399,7 +398,7 @@ func (m model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.currentFile == node.Path {
 					m.currentFile = ""
 					m.editor.SetValue("")
-					m.dirty = false
+					m.cleanContent = ""
 				}
 				m.refreshTree()
 			}
@@ -417,7 +416,7 @@ func (m model) handleUnsavedGuard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.saveCurrentFile()
 		return m.executePendingAction()
 	case "n":
-		m.dirty = false
+		m.cleanContent = m.editor.Value()
 		return m.executePendingAction()
 	case "esc":
 		m.inputMode = inputNone
@@ -451,7 +450,7 @@ func (m *model) openFile(path string) {
 	}
 	m.currentFile = path
 	m.editor.SetValue(string(data))
-	m.dirty = false
+	m.cleanContent = string(data)
 	m.editorMode = modeEdit
 	m.tree.currentFile = path
 	m.errMsg = ""
@@ -472,8 +471,8 @@ func (m *model) startNewNote() {
 	m.newNoteDir = dir
 	m.currentFile = ""
 	m.editor.SetValue("")
+	m.cleanContent = ""
 	m.editor.Focus()
-	m.dirty = true
 	m.activePanel = editorPanel
 	m.editorMode = modeEdit
 	m.errMsg = ""
@@ -503,7 +502,7 @@ func (m *model) saveCurrentFile() {
 		}
 		m.currentFile = fullPath
 		m.newNoteDir = ""
-		m.dirty = false
+		m.cleanContent = content
 		m.errMsg = ""
 		m.tree.currentFile = fullPath
 		m.refreshTree()
@@ -514,11 +513,12 @@ func (m *model) saveCurrentFile() {
 		m.errMsg = "No file open"
 		return
 	}
-	if err := os.WriteFile(m.currentFile, []byte(m.editor.Value()), 0o644); err != nil {
+	content := m.editor.Value()
+	if err := os.WriteFile(m.currentFile, []byte(content), 0o644); err != nil {
 		m.errMsg = fmt.Sprintf("Save failed: %v", err)
 		return
 	}
-	m.dirty = false
+	m.cleanContent = content
 	m.errMsg = ""
 	m.refreshTree()
 }
@@ -676,7 +676,7 @@ func (m model) View() string {
 		filename:   filename,
 		line:       line + 1,
 		col:        col + 1,
-		dirty:      m.dirty,
+		dirty:      m.isDirty(),
 		errMsg:     m.errMsg,
 		fileOpen:   m.currentFile != "" || m.newNoteDir != "",
 	}

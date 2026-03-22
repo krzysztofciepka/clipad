@@ -28,7 +28,7 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y":
 		m.editor.SetValue(m.pluginDiffResult)
-		m.dirty = true
+		// cleanContent unchanged — editor now differs from it, so isDirty() returns true
 		m.inputMode = inputNone
 		m.pluginActive = nil
 		m.pluginDiffOriginal = ""
@@ -41,7 +41,7 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pluginDiffResult = ""
 		return m, nil
 	case "ctrl+q", "ctrl+c":
-		if m.dirty {
+		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
 			return m, nil
