@@ -43,6 +43,10 @@ const (
 	inputFilter
 	inputConfirmDelete
 	inputUnsavedGuard
+	inputPluginSelect
+	inputPluginConfig
+	inputPluginPrompt
+	inputPluginDiff
 )
 
 type model struct {
@@ -79,19 +83,40 @@ type model struct {
 	pendingSwitchPath string
 
 	errMsg string
+
+	// Plugin system
+	plugins            []Plugin
+	pluginCursor       int
+	pluginActive       Plugin
+	pluginPromptInput  textinput.Model
+	pluginConfigFields []ConfigField
+	pluginConfigIndex  int
+	pluginConfigValues map[string]string
+	pluginConfigInput  textinput.Model
+	pluginDiffOriginal string
+	pluginDiffResult   string
+	pluginDiffViewL    viewport.Model
+	pluginDiffViewR    viewport.Model
+	pluginProcessing   bool
 }
 
-func newModel(vault string) model {
+func newModel(vault string, plugins []Plugin) model {
 	fi := textinput.New()
 	fi.Placeholder = "filter..."
 	fi.CharLimit = 256
 
+	pi := textinput.New()
+	pi.Placeholder = "Enter prompt..."
+	pi.CharLimit = 500
+
 	m := model{
-		vault:       vault,
-		activePanel: treePanel,
-		editorMode:  modeEdit,
-		editor:      newEditor(),
-		filterInput: fi,
+		vault:             vault,
+		activePanel:       treePanel,
+		editorMode:        modeEdit,
+		editor:            newEditor(),
+		filterInput:       fi,
+		plugins:           plugins,
+		pluginPromptInput: pi,
 	}
 
 	root, err := buildTree(vault)
@@ -120,7 +145,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recalcLayout()
 		return m, nil
 
+	case pluginResultMsg:
+		m.pluginProcessing = false
+		if msg.err != nil {
+			m.errMsg = "Plugin error: " + msg.err.Error()
+			m.inputMode = inputNone
+			m.pluginActive = nil
+			m.pluginDiffOriginal = ""
+			return m, nil
+		}
+		if msg.result == m.pluginDiffOriginal {
+			m.errMsg = "No changes"
+			m.inputMode = inputNone
+			m.pluginActive = nil
+			m.pluginDiffOriginal = ""
+			return m, nil
+		}
+		m.pluginDiffResult = msg.result
+		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
+			m.pluginDiffOriginal, msg.result, m.editorWidth, m.editorHeight)
+		m.inputMode = inputPluginDiff
+		return m, nil
+
 	case tea.KeyMsg:
+		if m.pluginProcessing {
+			return m, nil
+		}
+
 		if m.inputMode != inputNone {
 			return m.handleInputMode(msg)
 		}
@@ -149,6 +200,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+p":
 			return m.togglePreview()
+
+		case "ctrl+@":
+			if m.currentFile != "" || m.newNoteDir != "" {
+				if len(m.plugins) > 0 {
+					m.inputMode = inputPluginSelect
+					m.pluginCursor = 0
+				}
+			}
+			return m, nil
 
 		case "tab":
 			if m.activePanel == treePanel {
@@ -245,6 +305,14 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleDeleteConfirm(msg)
 	case inputUnsavedGuard:
 		return m.handleUnsavedGuard(msg)
+	case inputPluginSelect:
+		return m.handlePluginSelect(msg)
+	case inputPluginConfig:
+		return m.handlePluginConfig(msg)
+	case inputPluginPrompt:
+		return m.handlePluginPrompt(msg)
+	case inputPluginDiff:
+		return m.handlePluginDiff(msg)
 	}
 	return m, nil
 }
@@ -538,6 +606,11 @@ func (m *model) recalcLayout() {
 	m.tree.height = m.treeHeight
 
 	setEditorSize(&m.editor, m.editorWidth, m.editorHeight)
+
+	if m.inputMode == inputPluginDiff {
+		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
+			m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
+	}
 }
 
 func (m model) View() string {
@@ -557,7 +630,11 @@ func (m model) View() string {
 	}
 
 	var rightView string
-	if m.currentFile == "" && m.newNoteDir == "" {
+	if m.inputMode == inputPluginDiff {
+		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
+	} else if m.inputMode == inputPluginSelect {
+		rightView = pluginModalView(m.plugins, m.pluginCursor, m.editorWidth, m.editorHeight)
+	} else if m.currentFile == "" && m.newNoteDir == "" {
 		placeholder := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			Padding(1, 2).
@@ -601,10 +678,23 @@ func (m model) View() string {
 		col:        col + 1,
 		dirty:      m.dirty,
 		errMsg:     m.errMsg,
+		fileOpen:   m.currentFile != "" || m.newNoteDir != "",
 	}
 
 	statusView := sb.View()
-	if m.inputMode == inputConfirmDelete {
+	if m.pluginProcessing {
+		statusView = statusBarStyle.Width(m.width).Render("Processing...")
+	} else if m.inputMode == inputPluginConfig {
+		field := m.pluginConfigFields[m.pluginConfigIndex]
+		statusView = statusBarStyle.Width(m.width).Render(
+			field.Label + ": " + m.pluginConfigInput.View())
+	} else if m.inputMode == inputPluginPrompt {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Prompt: " + m.pluginPromptInput.View())
+	} else if m.inputMode == inputPluginDiff {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Accept changes? (y/n)")
+	} else if m.inputMode == inputConfirmDelete {
 		node := m.tree.selectedNode()
 		name := ""
 		if node != nil {

@@ -32,6 +32,7 @@ type StatusBar struct {
 	col        int
 	dirty      bool
 	errMsg     string
+	fileOpen   bool
 }
 
 func (s StatusBar) View() string {
@@ -45,6 +46,10 @@ func (s StatusBar) View() string {
 	left += statusKeyStyle.Render("^Q") + " quit  " +
 		statusKeyStyle.Render("Tab") + " switch  " +
 		statusKeyStyle.Render("^P") + " preview"
+
+	if s.fileOpen {
+		left += "  " + statusKeyStyle.Render("^Space") + " plugins"
+	}
 
 	right := ""
 	if s.errMsg != "" {

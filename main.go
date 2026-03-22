@@ -120,7 +120,10 @@ func main() {
 			[]byte("# Welcome to Clipad\n\nStart writing your notes here.\n"), 0o644)
 	}
 
-	m := newModel(cfg.Vault)
+	plugins := []Plugin{
+		&OpenRouterPlugin{},
+	}
+	m := newModel(cfg.Vault, plugins)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
