@@ -143,16 +143,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case previewReadyMsg:
-		// Only apply if we're still on the same file and in preview mode
-		if msg.path == m.currentFile && m.editorMode == modePreview {
-			vp := viewport.New(msg.width-2, msg.height)
-			vp.SetContent(msg.rendered)
-			m.preview = vp
-			// Don't touch activePanel — keep focus where the user left it
-		}
-		return m, nil
-
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -254,14 +244,10 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		m.tree.moveUp()
-		if node := m.previewSelectedFile(); node != nil {
-			return m, renderPreviewCmd(node.Path, m.editor.Value(), m.editorWidth, m.editorHeight)
-		}
+		m.previewSelectedFile()
 	case "down", "j":
 		m.tree.moveDown()
-		if node := m.previewSelectedFile(); node != nil {
-			return m, renderPreviewCmd(node.Path, m.editor.Value(), m.editorWidth, m.editorHeight)
-		}
+		m.previewSelectedFile()
 	case "enter":
 		node := m.tree.toggleOrSelect()
 		if node != nil {
@@ -472,27 +458,21 @@ func (m *model) openFile(path string) {
 	m.errMsg = ""
 }
 
-type previewReadyMsg struct {
-	path     string
-	rendered string
-	width    int
-	height   int
-}
 
-func (m *model) previewSelectedFile() *TreeNode {
+func (m *model) previewSelectedFile() {
 	node := m.tree.selectedNode()
 	if node == nil || node.IsDir {
-		return nil
+		return
 	}
 	if m.isDirty() {
-		return nil
+		return
 	}
-	if node.Path == m.currentFile && m.editorMode == modePreview {
-		return nil
+	if node.Path == m.currentFile {
+		return
 	}
 	m.openFile(node.Path)
-	// Switch to preview mode immediately with raw text so keystrokes
-	// don't get typed into the editor while waiting for markdown render
+	// Show raw text in read-only viewport so keystrokes don't leak into editor.
+	// Markdown rendering only happens on explicit Ctrl+P.
 	content := m.editor.Value()
 	vp := viewport.New(m.editorWidth-2, m.editorHeight)
 	vp.SetContent(content)
@@ -500,18 +480,8 @@ func (m *model) previewSelectedFile() *TreeNode {
 	m.editorMode = modePreview
 	m.editor.Blur()
 	m.activePanel = treePanel
-	return node
 }
 
-func renderPreviewCmd(path, content string, width, height int) tea.Cmd {
-	return func() tea.Msg {
-		rendered, err := renderMarkdown(content, width)
-		if err != nil {
-			return nil
-		}
-		return previewReadyMsg{path: path, rendered: rendered, width: width, height: height}
-	}
-}
 
 func (m *model) startNewNote() {
 	// Determine target directory from selected tree node
