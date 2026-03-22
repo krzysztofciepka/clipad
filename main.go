@@ -113,17 +113,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create welcome note if vault has no markdown files
-	root, err := buildTree(cfg.Vault)
-	if err == nil && len(collectFiles(root)) == 0 {
-		os.WriteFile(filepath.Join(cfg.Vault, "welcome.md"),
-			[]byte("# Welcome to Clipad\n\nStart writing your notes here.\n"), 0o644)
-	}
-
 	plugins := []Plugin{
 		&OpenRouterPlugin{},
 	}
 	m := newModel(cfg.Vault, plugins)
+
+	// Create welcome note if vault is empty (after tree was already built in newModel)
+	if m.treeRoot != nil && len(collectFiles(m.treeRoot)) == 0 {
+		os.WriteFile(filepath.Join(cfg.Vault, "welcome.md"),
+			[]byte("# Welcome to Clipad\n\nStart writing your notes here.\n"), 0o644)
+		m.refreshTree()
+	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

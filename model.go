@@ -136,7 +136,14 @@ func (m model) isDirty() bool {
 }
 
 func (m model) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(textarea.Blink, warmRendererCmd())
+}
+
+func warmRendererCmd() tea.Cmd {
+	return func() tea.Msg {
+		getRenderer(80) // pre-warm with a reasonable default width
+		return nil
+	}
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
