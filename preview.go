@@ -8,15 +8,33 @@ import (
 
 var previewStyle = lipgloss.NewStyle().Padding(0, 1)
 
-func renderMarkdown(content string, width int) (string, error) {
-	renderer, err := glamour.NewTermRenderer(
+var (
+	cachedRenderer      *glamour.TermRenderer
+	cachedRendererWidth int
+)
+
+func getRenderer(width int) (*glamour.TermRenderer, error) {
+	if cachedRenderer != nil && cachedRendererWidth == width {
+		return cachedRenderer, nil
+	}
+	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(width-4), // account for padding
+		glamour.WithWordWrap(width-4),
 	)
+	if err != nil {
+		return nil, err
+	}
+	cachedRenderer = r
+	cachedRendererWidth = width
+	return r, nil
+}
+
+func renderMarkdown(content string, width int) (string, error) {
+	r, err := getRenderer(width)
 	if err != nil {
 		return "", err
 	}
-	return renderer.Render(content)
+	return r.Render(content)
 }
 
 func newPreviewViewport(content string, width, height int) (viewport.Model, error) {
