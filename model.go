@@ -144,12 +144,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case previewReadyMsg:
-		// Only apply if we're still on the same file
-		if msg.path == m.currentFile {
+		// Only apply if we're still on the same file and in preview mode
+		if msg.path == m.currentFile && m.editorMode == modePreview {
 			vp := viewport.New(msg.width-2, msg.height)
 			vp.SetContent(msg.rendered)
 			m.preview = vp
-			m.editorMode = modePreview
+			// Don't touch activePanel — keep focus where the user left it
 		}
 		return m, nil
 
@@ -498,6 +498,8 @@ func (m *model) previewSelectedFile() *TreeNode {
 	vp.SetContent(content)
 	m.preview = vp
 	m.editorMode = modePreview
+	m.editor.Blur()
+	m.activePanel = treePanel
 	return node
 }
 
