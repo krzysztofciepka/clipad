@@ -632,8 +632,6 @@ func (m model) View() string {
 	var rightView string
 	if m.inputMode == inputPluginDiff {
 		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
-	} else if m.inputMode == inputPluginSelect {
-		rightView = pluginModalView(m.plugins, m.pluginCursor, m.editorWidth, m.editorHeight)
 	} else if m.currentFile == "" && m.newNoteDir == "" {
 		placeholder := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
@@ -656,6 +654,12 @@ func (m model) View() string {
 	}
 
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightView)
+
+	// Overlay plugin selector modal on top of the editor area
+	if m.inputMode == inputPluginSelect {
+		modal := pluginModalView(m.plugins, m.pluginCursor, m.editorWidth, m.editorHeight)
+		mainView = lipgloss.JoinHorizontal(lipgloss.Top, treeView, modal)
+	}
 
 	line, col := editorCursorPos(m.editor)
 	filename := ""

@@ -45,6 +45,13 @@ func pluginModalView(plugins []Plugin, cursor int, width, height int) string {
 		}
 	}
 
-	content := b.String()
-	return pluginModalStyle.Width(width - 4).Height(height - 4).Render(content)
+	// Size the modal to fit content, not the full panel
+	modalWidth := width * 2 / 3
+	if modalWidth < 40 {
+		modalWidth = 40
+	}
+	modal := pluginModalStyle.Width(modalWidth).Render(b.String())
+
+	// Center the modal over the panel area
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
