@@ -36,7 +36,7 @@ Follows Bubble Tea's Elm architecture: a single `model` holds all application st
 │  > projects/ │                                  │
 │              │                                  │
 ├──────────────┴──────────────────────────────────┤
-│ ^S save  ^N new  ^D delete  ^Q quit  ^M switch  ^P preview │
+│ ^S save  ^N new  ^D delete  ^Q quit  Tab switch  ^P preview │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -57,29 +57,35 @@ Two panels: file tree (left, ~25% width) and editor/preview (right, ~75%). One p
 | `filterInput` | `textinput.Model` | Fuzzy filter text input |
 | `filtering` | bool | Whether filter mode is active |
 | `confirmDelete` | bool | Whether delete confirmation is showing |
+| `pendingAction` | enum/nil | Action deferred by unsaved-changes guard (switchFile, quit, delete) |
+| `width` | int | Terminal width (updated on WindowSizeMsg) |
+| `height` | int | Terminal height (updated on WindowSizeMsg) |
 
 ## Data Flows
 
 ### Open File
-Select in tree -> read from disk -> load into textarea buffer -> clear dirty flag.
+Select in tree -> read from disk -> load into textarea buffer -> clear dirty flag. On read error, show error message in the status bar and keep the previous file open.
 
 ### Save
-`Ctrl+S` -> write textarea content to disk -> clear dirty flag -> refresh tree.
+`Ctrl+S` -> write textarea content to disk -> clear dirty flag -> refresh tree. On write error (permissions, disk full), show error in status bar; buffer is preserved.
 
 ### New Note
-`Ctrl+N` -> prompt for filename (e.g. `daily/2026-03-22.md`) in bottom bar -> create intermediate directories if needed -> create file -> open in editor.
+`Ctrl+N` -> prompt for filename (e.g. `daily/2026-03-22.md`) in bottom bar -> if file already exists, open the existing file instead of overwriting -> create intermediate directories if needed -> create file -> open in editor.
 
 ### Delete
-`Ctrl+D` -> show confirmation prompt -> delete from disk -> refresh tree -> open next file or clear editor.
+`Ctrl+D` (tree panel only) -> show confirmation in bottom bar: "Delete {filename}? (y/n)" -> on `y`: delete from disk -> refresh tree -> open next file or clear editor. On `n` or `Esc`: cancel.
 
 ### Preview Toggle
 `Ctrl+P` -> if in edit mode, render buffer through Glamour into viewport; if in preview, switch back to textarea.
 
 ### Filter
-`/` (in tree panel) -> show filter input at top of tree -> fuzzy match all files by filename -> Enter opens selected match -> Esc cancels and restores tree.
+`/` (in tree panel) -> show filter input at top of tree -> fuzzy match all files by filename -> Enter opens selected match -> Esc cancels and restores tree. Global keybindings (`Ctrl+S`, `Ctrl+Q`, etc.) remain active during filter mode; only printable characters go to the filter input.
 
 ### Unsaved Changes Guard
-When switching files or quitting with `dirty == true`, show prompt: "Unsaved changes. Save? (y/n/cancel)".
+When switching files or quitting with `dirty == true`, show prompt in bottom bar: "Unsaved changes. Save? (y/n/Esc)". `y` = save then proceed with pending action. `n` = discard changes then proceed. `Esc` = cancel and stay. The `pendingAction` field tracks what action to resume after the user responds.
+
+### Error Handling
+All file I/O errors are shown as a message in the status bar (non-blocking). The app never crashes on I/O errors — it shows the error and preserves current state. If the vault directory becomes inaccessible, a persistent error is shown and the tree displays empty.
 
 ## File Tree Component
 
@@ -127,9 +133,10 @@ When switching files or quitting with `dirty == true`, show prompt: "Unsaved cha
 | `Ctrl+S` | Save current file |
 | `Ctrl+N` | New note |
 | `Ctrl+Q` | Quit (with unsaved changes guard) |
-| `Ctrl+M` | Switch focus between tree and editor |
+| `Tab` | Switch focus between tree and editor |
 | `Ctrl+P` | Toggle edit/preview mode |
-| `Ctrl+D` | Delete selected file (with confirmation) |
+
+Note: `Tab` is used instead of `Ctrl+M` because `Ctrl+M` produces the same byte as Enter in most terminals. `Tab` is unambiguous and not needed for markdown editing (indentation uses spaces).
 
 ### Tree Panel
 
@@ -137,20 +144,24 @@ When switching files or quitting with `dirty == true`, show prompt: "Unsaved cha
 |-----|--------|
 | `/` | Activate fuzzy filter |
 | `Enter` | Open file / toggle folder |
+| `Ctrl+D` | Delete selected file (with confirmation) |
 | Up/Down | Navigate entries |
+
+`Ctrl+D` is tree-panel only to avoid conflicting with editor text input.
 
 ### Editor Panel
 All normal text input passes through to the textarea. Arrow keys move the cursor.
 
 ### Bottom Bar Format
 ```
-^S save  ^N new  ^D delete  ^Q quit  ^M switch  ^P preview  [line:col] [filename] [modified]
+^S save  ^N new  ^D del  ^Q quit  Tab switch  ^P preview  [line:col] [filename] [modified]
 ```
+`^D del` is only shown when the tree panel is focused.
 
 ## Configuration
 
 ### Location
-`~/.config/clipad/config.toml`
+`$XDG_CONFIG_HOME/clipad/config.toml` (defaults to `~/.config/clipad/config.toml` if `XDG_CONFIG_HOME` is unset).
 
 ### Fields
 ```toml
@@ -193,3 +204,15 @@ Single `main` package. One file per concern.
 | `github.com/charmbracelet/glamour` | Markdown rendering |
 | `github.com/pelletier/go-toml/v2` | Config file parsing |
 | `github.com/sahilm/fuzzy` | Fuzzy matching for file filter |
+
+## Window Resize
+
+The layout recomputes panel widths and heights on every `tea.WindowSizeMsg`. The 25%/75% split is recalculated dynamically. Minimum usable terminal size is 60 columns by 15 rows — below this, a "terminal too small" message is shown instead of the UI.
+
+## Known Limitations & Out of Scope (v1)
+
+- **No rename/move:** Manage file renames outside the app. May be added in a future version.
+- **No file watching:** Changes made outside the app (e.g. git pull) are not detected. The tree refreshes only after internal operations (save, new, delete).
+- **Large files:** No file size limit is enforced. Very large files (>1MB) may cause slow rendering in the textarea. This is a known limitation of the textarea bubble.
+- **Cursor state not preserved:** When switching between files, cursor resets to position 0,0. Scroll position is not retained.
+- **No external change detection:** The app does not watch the filesystem for changes made by other programs.
