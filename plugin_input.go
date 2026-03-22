@@ -32,10 +32,10 @@ func (m model) handlePluginSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cmd := m.pluginPromptInput.Focus()
 			return m, cmd
 		}
-	case "esc", "ctrl+c":
+	case "esc":
 		m.inputMode = inputNone
 		m.pluginActive = nil
-	case "ctrl+q":
+	case "ctrl+q", "ctrl+c":
 		if m.dirty {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
@@ -70,10 +70,10 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.pluginConfigInput = newPluginConfigInput(m.pluginConfigFields[m.pluginConfigIndex])
 		return m, textinput.Blink
-	case "esc", "ctrl+c":
+	case "esc":
 		m.inputMode = inputNone
 		m.pluginActive = nil
-	case "ctrl+q":
+	case "ctrl+q", "ctrl+c":
 		if m.dirty {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
@@ -104,10 +104,10 @@ func (m model) handlePluginPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pluginProcessing = true
 		m.inputMode = inputNone
 		return m, runPluginCmd(m.pluginActive, content, prompt, cfg)
-	case "esc", "ctrl+c":
+	case "esc":
 		m.inputMode = inputNone
 		m.pluginActive = nil
-	case "ctrl+q":
+	case "ctrl+q", "ctrl+c":
 		if m.dirty {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
