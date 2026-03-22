@@ -840,6 +840,20 @@ func (m model) View() string {
 			Width(m.editorWidth).
 			Height(m.editorHeight).
 			Render(placeholder)
+	} else if m.inputMode == inputReplaceSearch || m.inputMode == inputReplaceWith {
+		// Show content with highlighted matches
+		content := m.editor.Value()
+		term := m.replaceSearchInput.Value()
+		if m.inputMode == inputReplaceWith {
+			term = m.replaceSearchTerm
+		}
+		highlighted := highlightMatches(content, term, m.editorWidth-4)
+		vp := viewport.New(m.editorWidth-2, m.editorHeight)
+		vp.SetContent(highlighted)
+		rightView = previewStyle.
+			Width(m.editorWidth).
+			Height(m.editorHeight).
+			Render(vp.View())
 	} else if m.editorMode == modePreview {
 		rightView = previewStyle.
 			Width(m.editorWidth).
@@ -900,8 +914,14 @@ func (m model) View() string {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"New folder: " + m.newFolderInput.View())
 	} else if m.inputMode == inputReplaceSearch {
+		term := m.replaceSearchInput.Value()
+		countInfo := ""
+		if term != "" {
+			count := strings.Count(m.editor.Value(), term)
+			countInfo = fmt.Sprintf("  (%d found)", count)
+		}
 		statusView = statusBarStyle.Width(m.width).Render(
-			"Find: " + m.replaceSearchInput.View())
+			"Find: " + m.replaceSearchInput.View() + countInfo)
 	} else if m.inputMode == inputReplaceWith {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Replace with: " + m.replaceWithInput.View())
@@ -977,4 +997,29 @@ func wordWrap(s string, width int) string {
 		result.WriteByte('\n')
 	}
 	return strings.TrimRight(result.String(), "\n")
+}
+
+var highlightStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color("226")).
+	Foreground(lipgloss.Color("0")).
+	Bold(true)
+
+func highlightMatches(content, term string, wrapWidth int) string {
+	wrapped := wordWrap(content, wrapWidth)
+	if term == "" {
+		return wrapped
+	}
+	var result strings.Builder
+	remaining := wrapped
+	for {
+		idx := strings.Index(remaining, term)
+		if idx < 0 {
+			result.WriteString(remaining)
+			break
+		}
+		result.WriteString(remaining[:idx])
+		result.WriteString(highlightStyle.Render(term))
+		remaining = remaining[idx+len(term):]
+	}
+	return result.String()
 }
