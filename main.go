@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -110,6 +111,13 @@ func main() {
 	if _, err := os.Stat(cfg.Vault); err != nil {
 		fmt.Fprintf(os.Stderr, "Vault directory not found: %s\n", cfg.Vault)
 		os.Exit(1)
+	}
+
+	// Create welcome note if vault has no markdown files
+	root, err := buildTree(cfg.Vault)
+	if err == nil && len(collectFiles(root)) == 0 {
+		os.WriteFile(filepath.Join(cfg.Vault, "welcome.md"),
+			[]byte("# Welcome to Clipad\n\nStart writing your notes here.\n"), 0o644)
 	}
 
 	m := newModel(cfg.Vault)

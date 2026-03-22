@@ -131,7 +131,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+q":
+		case "ctrl+q", "ctrl+c":
 			if m.dirty {
 				m.inputMode = inputUnsavedGuard
 				m.pendingAction = pendingQuit
@@ -415,6 +415,10 @@ func (m *model) createAndOpenNote(relPath string) {
 		relPath += ".md"
 	}
 	fullPath := filepath.Join(m.vault, relPath)
+	if !strings.HasPrefix(filepath.Clean(fullPath), filepath.Clean(m.vault)) {
+		m.errMsg = "Path must be within the vault"
+		return
+	}
 
 	if _, err := os.Stat(fullPath); err == nil {
 		m.openFile(fullPath)
