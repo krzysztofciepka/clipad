@@ -1346,6 +1346,11 @@ func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	// Global keybindings remain active during filter
 	case "ctrl+q":
+		if m.dirty {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
 		return m, tea.Quit
 	case "ctrl+s":
 		m.saveCurrentFile()
