@@ -115,7 +115,7 @@ All file I/O errors are shown as a message in the status bar (non-blocking). The
 - Uses Bubble Tea's `textarea` bubble
 - Multiline text editing with cursor movement (arrows, home/end)
 - Vertical scrolling when content exceeds viewport
-- Tab inserts spaces (configurable width, default 4)
+- Indentation is done with spaces via the spacebar (Tab is reserved for panel switching)
 - Cursor position shown in bottom bar (line:col)
 
 ### Preview
@@ -166,7 +166,7 @@ All normal text input passes through to the textarea. Arrow keys move the cursor
 ### Fields
 ```toml
 vault = "/home/user/notes"
-tab_width = 4
+# tab_width removed — indentation uses spacebar
 ```
 
 ### First Run
@@ -215,4 +215,4 @@ The layout recomputes panel widths and heights on every `tea.WindowSizeMsg`. The
 - **No file watching:** Changes made outside the app (e.g. git pull) are not detected. The tree refreshes only after internal operations (save, new, delete).
 - **Large files:** No file size limit is enforced. Very large files (>1MB) may cause slow rendering in the textarea. This is a known limitation of the textarea bubble.
 - **Cursor state not preserved:** When switching between files, cursor resets to position 0,0. Scroll position is not retained.
-- **No external change detection:** The app does not watch the filesystem for changes made by other programs.
+- **Startup:** When launching into a vault with existing files, the editor starts empty with no file selected. The user selects a file from the tree.
