@@ -256,6 +256,13 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		m.tree.moveDown()
 		m.previewSelectedFile()
+	case "right":
+		if m.currentFile != "" {
+			m.activePanel = editorPanel
+			m.editorMode = modeEdit
+			cmd := m.editor.Focus()
+			return m, cmd
+		}
 	case "enter":
 		node := m.tree.toggleOrSelect()
 		if node != nil {
