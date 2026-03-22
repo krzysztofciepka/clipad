@@ -26,7 +26,7 @@ var (
 		Foreground(lipgloss.Color("240"))
 )
 
-func pluginModalView(plugins []Plugin, cursor int, width, height int) string {
+func pluginModalOverlay(plugins []Plugin, cursor int, background string, width, height int) string {
 	var b strings.Builder
 	title := lipgloss.NewStyle().Bold(true).Render("Plugins")
 	b.WriteString(title)
@@ -45,13 +45,14 @@ func pluginModalView(plugins []Plugin, cursor int, width, height int) string {
 		}
 	}
 
-	// Size the modal to fit content, not the full panel
 	modalWidth := width * 2 / 3
 	if modalWidth < 40 {
 		modalWidth = 40
 	}
 	modal := pluginModalStyle.Width(modalWidth).Render(b.String())
 
-	// Center the modal over the panel area
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	// Center the modal over the background content
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal,
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceForeground(lipgloss.NoColor{}))
 }

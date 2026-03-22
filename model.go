@@ -244,8 +244,10 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		m.tree.moveUp()
+		m.previewSelectedFile()
 	case "down", "j":
 		m.tree.moveDown()
+		m.previewSelectedFile()
 	case "enter":
 		node := m.tree.toggleOrSelect()
 		if node != nil {
@@ -456,6 +458,22 @@ func (m *model) openFile(path string) {
 	m.errMsg = ""
 }
 
+func (m *model) previewSelectedFile() {
+	node := m.tree.selectedNode()
+	if node == nil || node.IsDir {
+		return
+	}
+	// Don't auto-switch if current content is dirty
+	if m.isDirty() {
+		return
+	}
+	// Don't reload the same file
+	if node.Path == m.currentFile {
+		return
+	}
+	m.openFile(node.Path)
+}
+
 func (m *model) startNewNote() {
 	// Determine target directory from selected tree node
 	dir := m.vault
@@ -653,13 +671,12 @@ func (m model) View() string {
 			Render(m.editor.View())
 	}
 
-	mainView := lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightView)
-
-	// Overlay plugin selector modal on top of the editor area
+	// Overlay plugin selector modal centered over the editor area
 	if m.inputMode == inputPluginSelect {
-		modal := pluginModalView(m.plugins, m.pluginCursor, m.editorWidth, m.editorHeight)
-		mainView = lipgloss.JoinHorizontal(lipgloss.Top, treeView, modal)
+		rightView = pluginModalOverlay(m.plugins, m.pluginCursor, rightView, m.editorWidth, m.editorHeight)
 	}
+
+	mainView := lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightView)
 
 	line, col := editorCursorPos(m.editor)
 	filename := ""
