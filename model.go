@@ -33,13 +33,13 @@ const (
 	pendingNone pendingActionType = iota
 	pendingSwitchFile
 	pendingQuit
+	pendingNewNote
 )
 
 type inputMode int
 
 const (
 	inputNone inputMode = iota
-	inputNewNote
 	inputFilter
 	inputConfirmDelete
 	inputUnsavedGuard
@@ -67,9 +67,9 @@ type model struct {
 
 	currentFile string
 	dirty       bool
+	newNoteDir  string // non-empty when editing a new unsaved note; holds the target directory
 
 	inputMode     inputMode
-	newNoteInput  textinput.Model
 	filterInput   textinput.Model
 	filterResults []*TreeNode
 	filterCursor  int
@@ -82,21 +82,16 @@ type model struct {
 }
 
 func newModel(vault string) model {
-	ni := textinput.New()
-	ni.Placeholder = "path/to/note.md"
-	ni.CharLimit = 256
-
 	fi := textinput.New()
 	fi.Placeholder = "filter..."
 	fi.CharLimit = 256
 
 	m := model{
-		vault:        vault,
-		activePanel:  treePanel,
-		editorMode:   modeEdit,
-		editor:       newEditor(),
-		newNoteInput: ni,
-		filterInput:  fi,
+		vault:       vault,
+		activePanel: treePanel,
+		editorMode:  modeEdit,
+		editor:      newEditor(),
+		filterInput: fi,
 	}
 
 	root, err := buildTree(vault)
@@ -144,10 +139,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+n":
-			m.inputMode = inputNewNote
-			m.newNoteInput.SetValue("")
-			cmd := m.newNoteInput.Focus()
-			return m, cmd
+			if m.dirty {
+				m.inputMode = inputUnsavedGuard
+				m.pendingAction = pendingNewNote
+				return m, nil
+			}
+			m.startNewNote()
+			return m, nil
 
 		case "ctrl+p":
 			return m.togglePreview()
@@ -241,8 +239,6 @@ func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.inputMode {
-	case inputNewNote:
-		return m.handleNewNoteInput(msg)
 	case inputFilter:
 		return m.handleFilterInput(msg)
 	case inputConfirmDelete:
@@ -253,23 +249,6 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handleNewNoteInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "enter":
-		path := m.newNoteInput.Value()
-		if path != "" {
-			m.createAndOpenNote(path)
-		}
-		m.inputMode = inputNone
-		return m, nil
-	case "esc", "ctrl+c":
-		m.inputMode = inputNone
-		return m, nil
-	}
-	var cmd tea.Cmd
-	m.newNoteInput, cmd = m.newNoteInput.Update(msg)
-	return m, cmd
-}
 
 func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -322,10 +301,14 @@ func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.inputMode = inputNone
 		return m.togglePreview()
 	case "ctrl+n":
-		m.inputMode = inputNewNote
-		m.newNoteInput.SetValue("")
-		cmd := m.newNoteInput.Focus()
-		return m, cmd
+		m.inputMode = inputNone
+		if m.dirty {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingNewNote
+			return m, nil
+		}
+		m.startNewNote()
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -385,6 +368,9 @@ func (m model) executePendingAction() (tea.Model, tea.Cmd) {
 		m.openFile(m.pendingSwitchPath)
 		m.pendingAction = pendingNone
 		m.pendingSwitchPath = ""
+	case pendingNewNote:
+		m.pendingAction = pendingNone
+		m.startNewNote()
 	}
 	return m, nil
 }
@@ -403,7 +389,59 @@ func (m *model) openFile(path string) {
 	m.errMsg = ""
 }
 
+func (m *model) startNewNote() {
+	// Determine target directory from selected tree node
+	dir := m.vault
+	node := m.tree.selectedNode()
+	if node != nil {
+		if node.IsDir {
+			dir = node.Path
+		} else {
+			dir = filepath.Dir(node.Path)
+		}
+	}
+
+	m.newNoteDir = dir
+	m.currentFile = ""
+	m.editor.SetValue("")
+	m.editor.Focus()
+	m.dirty = true
+	m.activePanel = editorPanel
+	m.editorMode = modeEdit
+	m.errMsg = ""
+}
+
 func (m *model) saveCurrentFile() {
+	// New note: derive filename from first line
+	if m.currentFile == "" && m.newNoteDir != "" {
+		content := m.editor.Value()
+		name := noteNameFromContent(content)
+		if name == "" {
+			m.errMsg = "Write something first — the first line becomes the filename"
+			return
+		}
+		fullPath := filepath.Join(m.newNoteDir, name+".md")
+		if _, err := os.Stat(fullPath); err == nil {
+			m.errMsg = fmt.Sprintf("File already exists: %s", name+".md")
+			return
+		}
+		if err := os.MkdirAll(m.newNoteDir, 0o755); err != nil {
+			m.errMsg = fmt.Sprintf("Create dir failed: %v", err)
+			return
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			m.errMsg = fmt.Sprintf("Save failed: %v", err)
+			return
+		}
+		m.currentFile = fullPath
+		m.newNoteDir = ""
+		m.dirty = false
+		m.errMsg = ""
+		m.tree.currentFile = fullPath
+		m.refreshTree()
+		return
+	}
+
 	if m.currentFile == "" {
 		m.errMsg = "No file open"
 		return
@@ -417,36 +455,21 @@ func (m *model) saveCurrentFile() {
 	m.refreshTree()
 }
 
-func (m *model) createAndOpenNote(relPath string) {
-	if !strings.HasSuffix(relPath, ".md") {
-		relPath += ".md"
+func noteNameFromContent(content string) string {
+	firstLine := strings.SplitN(content, "\n", 2)[0]
+	// Strip markdown heading prefix
+	firstLine = strings.TrimLeft(firstLine, "# ")
+	firstLine = strings.TrimSpace(firstLine)
+	// Sanitize: remove characters invalid in filenames
+	replacer := strings.NewReplacer("/", "-", "\\", "-", ":", "-", "*", "", "?", "", "\"", "", "<", "", ">", "", "|", "")
+	firstLine = replacer.Replace(firstLine)
+	if firstLine == "" {
+		return ""
 	}
-	fullPath := filepath.Join(m.vault, relPath)
-	vaultPrefix := filepath.Clean(m.vault) + string(filepath.Separator)
-	if filepath.Clean(fullPath) != filepath.Clean(m.vault) && !strings.HasPrefix(filepath.Clean(fullPath), vaultPrefix) {
-		m.errMsg = "Path must be within the vault"
-		return
-	}
-
-	if _, err := os.Stat(fullPath); err == nil {
-		m.openFile(fullPath)
-		return
-	}
-
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		m.errMsg = fmt.Sprintf("Create dir failed: %v", err)
-		return
-	}
-
-	if err := os.WriteFile(fullPath, []byte(""), 0o644); err != nil {
-		m.errMsg = fmt.Sprintf("Create file failed: %v", err)
-		return
-	}
-
-	m.refreshTree()
-	m.openFile(fullPath)
+	return firstLine
 }
+
+
 
 func (m *model) refreshTree() {
 	root, err := buildTree(m.vault)
@@ -559,7 +582,9 @@ func (m model) View() string {
 
 	line, col := editorCursorPos(m.editor)
 	filename := ""
-	if m.currentFile != "" {
+	if m.newNoteDir != "" {
+		filename = "[new note]"
+	} else if m.currentFile != "" {
 		rel, err := filepath.Rel(m.vault, m.currentFile)
 		if err != nil {
 			filename = filepath.Base(m.currentFile)
@@ -579,9 +604,7 @@ func (m model) View() string {
 	}
 
 	statusView := sb.View()
-	if m.inputMode == inputNewNote {
-		statusView = m.newNoteView()
-	} else if m.inputMode == inputConfirmDelete {
+	if m.inputMode == inputConfirmDelete {
 		node := m.tree.selectedNode()
 		name := ""
 		if node != nil {
@@ -597,10 +620,7 @@ func (m model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, mainView, statusView)
 }
 
-func (m model) newNoteView() string {
-	return statusBarStyle.Width(m.width).Render(
-		"New note: " + m.newNoteInput.View())
-}
+
 
 func (m model) filterView() string {
 	var b strings.Builder
