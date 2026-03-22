@@ -48,6 +48,8 @@ const (
 	inputPluginPrompt
 	inputPluginDiff
 	inputNewFolder
+	inputReplaceSearch
+	inputReplaceWith
 )
 
 type model struct {
@@ -83,7 +85,10 @@ type model struct {
 	pendingAction     pendingActionType
 	pendingSwitchPath string
 
-	newFolderInput textinput.Model
+	newFolderInput    textinput.Model
+	replaceSearchInput textinput.Model
+	replaceWithInput   textinput.Model
+	replaceSearchTerm  string
 
 	errMsg string
 
@@ -116,13 +121,23 @@ func newModel(vault string, plugins []Plugin) model {
 	nf.Placeholder = "folder name"
 	nf.CharLimit = 256
 
+	rs := textinput.New()
+	rs.Placeholder = "search text"
+	rs.CharLimit = 256
+
+	rw := textinput.New()
+	rw.Placeholder = "replace with"
+	rw.CharLimit = 256
+
 	m := model{
-		vault:             vault,
-		activePanel:       treePanel,
-		editorMode:        modeEdit,
-		editor:            newEditor(),
-		filterInput:       fi,
-		newFolderInput:    nf,
+		vault:              vault,
+		activePanel:        treePanel,
+		editorMode:         modeEdit,
+		editor:             newEditor(),
+		filterInput:        fi,
+		newFolderInput:     nf,
+		replaceSearchInput: rs,
+		replaceWithInput:   rw,
 		plugins:           plugins,
 		pluginPromptInput: pi,
 	}
@@ -208,6 +223,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.startNewNote()
+			return m, nil
+
+		case "ctrl+r":
+			if m.currentFile != "" || m.newNoteDir != "" {
+				m.inputMode = inputReplaceSearch
+				m.replaceSearchInput.SetValue("")
+				m.replaceSearchTerm = ""
+				cmd := m.replaceSearchInput.Focus()
+				return m, cmd
+			}
 			return m, nil
 
 		case "ctrl+p":
@@ -328,6 +353,10 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleUnsavedGuard(msg)
 	case inputNewFolder:
 		return m.handleNewFolder(msg)
+	case inputReplaceSearch:
+		return m.handleReplaceSearch(msg)
+	case inputReplaceWith:
+		return m.handleReplaceWith(msg)
 	case inputPluginSelect:
 		return m.handlePluginSelect(msg)
 	case inputPluginConfig:
@@ -476,6 +505,73 @@ func (m model) handleNewFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.newFolderInput, cmd = m.newFolderInput.Update(msg)
+	return m, cmd
+}
+
+func (m model) handleReplaceSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		term := m.replaceSearchInput.Value()
+		if term == "" {
+			return m, nil
+		}
+		// Check if the term exists in the content
+		content := m.editor.Value()
+		count := strings.Count(content, term)
+		if count == 0 {
+			m.errMsg = "No matches found"
+			m.inputMode = inputNone
+			return m, nil
+		}
+		m.replaceSearchTerm = term
+		m.inputMode = inputReplaceWith
+		m.replaceWithInput.SetValue("")
+		cmd := m.replaceWithInput.Focus()
+		m.errMsg = fmt.Sprintf("%d match(es) found", count)
+		return m, cmd
+	case "esc":
+		m.inputMode = inputNone
+		return m, nil
+	case "ctrl+q", "ctrl+c":
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.replaceSearchInput, cmd = m.replaceSearchInput.Update(msg)
+	return m, cmd
+}
+
+func (m model) handleReplaceWith(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		replacement := m.replaceWithInput.Value()
+		content := m.editor.Value()
+		newContent := strings.ReplaceAll(content, m.replaceSearchTerm, replacement)
+		m.editor.SetValue(newContent)
+		count := strings.Count(content, m.replaceSearchTerm)
+		m.errMsg = fmt.Sprintf("Replaced %d occurrence(s)", count)
+		m.inputMode = inputNone
+		m.replaceSearchTerm = ""
+		return m, nil
+	case "esc":
+		m.inputMode = inputNone
+		m.replaceSearchTerm = ""
+		m.errMsg = ""
+		return m, nil
+	case "ctrl+q", "ctrl+c":
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.replaceWithInput, cmd = m.replaceWithInput.Update(msg)
 	return m, cmd
 }
 
@@ -803,6 +899,12 @@ func (m model) View() string {
 	} else if m.inputMode == inputNewFolder {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"New folder: " + m.newFolderInput.View())
+	} else if m.inputMode == inputReplaceSearch {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Find: " + m.replaceSearchInput.View())
+	} else if m.inputMode == inputReplaceWith {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Replace with: " + m.replaceWithInput.View())
 	} else if m.inputMode == inputConfirmDelete {
 		node := m.tree.selectedNode()
 		name := ""
