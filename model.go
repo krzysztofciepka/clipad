@@ -687,14 +687,6 @@ func (m model) togglePreview() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) recalcLayout() {
-	m.treeWidth = m.width / 4
-	if m.treeWidth < 15 {
-		m.treeWidth = 15
-	}
-	m.editorWidth = m.width - m.treeWidth
-	if m.editorWidth < 20 {
-		m.editorWidth = 20
-	}
 	m.treeHeight = m.height - 2
 	if m.treeHeight < 1 {
 		m.treeHeight = 1
@@ -702,6 +694,15 @@ func (m *model) recalcLayout() {
 	m.editorHeight = m.height - 2
 	if m.editorHeight < 1 {
 		m.editorHeight = 1
+	}
+
+	// Hide tree on narrow terminals
+	if m.width < 80 {
+		m.treeWidth = 0
+		m.editorWidth = m.width
+	} else {
+		m.treeWidth = m.width / 4
+		m.editorWidth = m.width - m.treeWidth
 	}
 
 	m.tree.width = m.treeWidth
@@ -722,10 +723,12 @@ func (m model) View() string {
 
 
 
-	treeView := m.tree.View(m.activePanel == treePanel)
-
-	if m.inputMode == inputFilter {
-		treeView = m.filterView()
+	var treeView string
+	if m.treeWidth > 0 {
+		treeView = m.tree.View(m.activePanel == treePanel)
+		if m.inputMode == inputFilter {
+			treeView = m.filterView()
+		}
 	}
 
 	var rightView string
@@ -752,7 +755,12 @@ func (m model) View() string {
 			Render(m.editor.View())
 	}
 
-	mainView := lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightView)
+	var mainView string
+	if m.treeWidth > 0 {
+		mainView = lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightView)
+	} else {
+		mainView = rightView
+	}
 
 	line, col := editorCursorPos(m.editor)
 	filename := ""
