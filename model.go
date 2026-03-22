@@ -212,6 +212,13 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if node != nil && !node.IsDir {
 			m.inputMode = inputConfirmDelete
 		}
+	default:
+		// Auto-switch to editor on printable input when a file is open
+		if m.currentFile != "" && msg.Type == tea.KeyRunes {
+			m.activePanel = editorPanel
+			m.editor.Focus()
+			return m.handleEditorKeys(msg)
+		}
 	}
 	return m, nil
 }
