@@ -542,7 +542,7 @@ func (m *model) previewSelectedFile() {
 	// Markdown rendering only happens on explicit Ctrl+P.
 	content := m.editor.Value()
 	vp := viewport.New(m.editorWidth-2, m.editorHeight)
-	vp.SetContent(content)
+	vp.SetContent(wordWrap(content, m.editorWidth-4))
 	m.preview = vp
 	m.editorMode = modePreview
 	m.editor.Blur()
@@ -852,4 +852,27 @@ func (m model) filterView() string {
 	}
 
 	return treePanelStyle.Width(m.treeWidth).Height(m.treeHeight).Render(b.String())
+}
+
+func wordWrap(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	var result strings.Builder
+	for _, line := range strings.Split(s, "\n") {
+		for len(line) > width {
+			// Find last space within width
+			cut := strings.LastIndex(line[:width], " ")
+			if cut <= 0 {
+				cut = width
+			}
+			result.WriteString(line[:cut])
+			result.WriteByte('\n')
+			line = line[cut:]
+			line = strings.TrimLeft(line, " ")
+		}
+		result.WriteString(line)
+		result.WriteByte('\n')
+	}
+	return strings.TrimRight(result.String(), "\n")
 }
