@@ -671,11 +671,6 @@ func (m model) View() string {
 			Render(m.editor.View())
 	}
 
-	// Overlay plugin selector modal centered over the editor area
-	if m.inputMode == inputPluginSelect {
-		rightView = pluginModalOverlay(m.plugins, m.pluginCursor, rightView, m.editorWidth, m.editorHeight)
-	}
-
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightView)
 
 	line, col := editorCursorPos(m.editor)
@@ -726,6 +721,10 @@ func (m model) View() string {
 	} else if m.inputMode == inputUnsavedGuard {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Unsaved changes. Save? (y/n/Esc)")
+	}
+
+	if m.inputMode == inputPluginSelect {
+		statusView = pluginSelectorView(m.plugins, m.pluginCursor, m.width)
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, mainView, statusView)

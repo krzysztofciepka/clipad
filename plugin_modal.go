@@ -1,58 +1,34 @@
 package main
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
 var (
-	pluginModalStyle = lipgloss.NewStyle().
-		Padding(1, 2).
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("117"))
-
 	pluginItemStyle = lipgloss.NewStyle().
-		PaddingLeft(2)
+		PaddingLeft(1)
 
-	pluginSelectedStyle = lipgloss.NewStyle().
-		PaddingLeft(2).
+	pluginCursorStyle = lipgloss.NewStyle().
+		PaddingLeft(1).
 		Background(lipgloss.Color("236")).
 		Foreground(lipgloss.Color("117")).
 		Bold(true)
-
-	pluginDescStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
 )
 
-func pluginModalOverlay(plugins []Plugin, cursor int, background string, width, height int) string {
-	var b strings.Builder
-	title := lipgloss.NewStyle().Bold(true).Render("Plugins")
-	b.WriteString(title)
-	b.WriteString("\n\n")
-
+func pluginSelectorView(plugins []Plugin, cursor int, width int) string {
+	items := ""
 	for i, p := range plugins {
-		line := fmt.Sprintf("%s  %s", p.Name(), pluginDescStyle.Render(p.Description()))
+		name := p.Name()
 		if i == cursor {
-			line = pluginSelectedStyle.Render(fmt.Sprintf("> %s  %s", p.Name(), p.Description()))
+			name = pluginCursorStyle.Render("> " + name)
 		} else {
-			line = pluginItemStyle.Render(line)
+			name = pluginItemStyle.Render("  " + name)
 		}
-		b.WriteString(line)
-		if i < len(plugins)-1 {
-			b.WriteString("\n")
+		if i > 0 {
+			items += "  "
 		}
+		items += name
 	}
 
-	modalWidth := width * 2 / 3
-	if modalWidth < 40 {
-		modalWidth = 40
-	}
-	modal := pluginModalStyle.Width(modalWidth).Render(b.String())
-
-	// Center the modal over the background content
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal,
-		lipgloss.WithWhitespaceChars(" "),
-		lipgloss.WithWhitespaceForeground(lipgloss.NoColor{}))
+	return statusBarStyle.Width(width).Render(items)
 }
