@@ -35,21 +35,29 @@ type StatusBar struct {
 	fileOpen   bool
 }
 
-func (s StatusBar) View() string {
-	left := statusKeyStyle.Render("^S") + " save  " +
-		statusKeyStyle.Render("^N") + " new  "
+type hint struct {
+	key   string
+	label string
+}
 
-	if s.treeActive {
-		left += statusKeyStyle.Render("^D") + " del  " +
-			statusKeyStyle.Render("^F") + " folder  "
+func (s StatusBar) View() string {
+	hints := []hint{
+		{"^S", "save"},
+		{"^N", "new"},
 	}
 
-	left += statusKeyStyle.Render("^Q") + " quit  " +
-		statusKeyStyle.Render("Tab") + " switch  " +
-		statusKeyStyle.Render("^P") + " preview"
+	if s.treeActive {
+		hints = append(hints, hint{"^D", "del"}, hint{"^F", "folder"})
+	}
+
+	hints = append(hints,
+		hint{"^Q", "quit"},
+		hint{"Tab", "switch"},
+		hint{"^P", "preview"},
+	)
 
 	if s.fileOpen {
-		left += "  " + statusKeyStyle.Render("^Space") + " plugins"
+		hints = append(hints, hint{"^Spc", "plugins"})
 	}
 
 	right := ""
@@ -63,7 +71,18 @@ func (s StatusBar) View() string {
 		right = fmt.Sprintf("%d:%d  %s%s", s.line, s.col, s.filename, modified)
 	}
 
-	gap := s.width - lipgloss.Width(left) - lipgloss.Width(right)
+	// Build left side, dropping hints from the end if they don't fit
+	rightWidth := lipgloss.Width(right)
+	left := ""
+	for _, h := range hints {
+		entry := statusKeyStyle.Render(h.key) + " " + h.label + "  "
+		if lipgloss.Width(left)+lipgloss.Width(entry)+rightWidth+2 > s.width {
+			break
+		}
+		left += entry
+	}
+
+	gap := s.width - lipgloss.Width(left) - rightWidth
 	if gap < 1 {
 		gap = 1
 	}
