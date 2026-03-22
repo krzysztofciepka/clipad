@@ -463,15 +463,19 @@ func (m *model) previewSelectedFile() {
 	if node == nil || node.IsDir {
 		return
 	}
-	// Don't auto-switch if current content is dirty
 	if m.isDirty() {
 		return
 	}
-	// Don't reload the same file
-	if node.Path == m.currentFile {
+	if node.Path == m.currentFile && m.editorMode == modePreview {
 		return
 	}
 	m.openFile(node.Path)
+	// Show rendered markdown while browsing
+	vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight)
+	if err == nil {
+		m.preview = vp
+		m.editorMode = modePreview
+	}
 }
 
 func (m *model) startNewNote() {
