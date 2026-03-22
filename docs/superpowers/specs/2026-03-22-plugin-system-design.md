@@ -55,7 +55,7 @@ When a plugin is selected and has no config file (or is missing required fields)
 - Sequential prompts in the bottom bar, one per `ConfigField`
 - Format: `{Label}: ___` (with placeholder text)
 - Secret fields: `textinput.EchoPassword` mode
-- Enter confirms the current field and moves to the next
+- Enter confirms the current field (empty values are rejected — field re-prompts) and moves to the next
 - Esc aborts the entire config flow, returns to normal mode
 - After all fields: save config to disk, proceed to prompt input
 
@@ -63,14 +63,27 @@ When a plugin is selected and has no config file (or is missing required fields)
 
 - New input mode: `inputPluginPrompt`
 - Text input in the bottom bar: `Prompt: ___`
-- Enter submits — calls `plugin.Run(content, prompt, config)` in a goroutine
-- Esc cancels, returns to normal mode
+- Prompt char limit: 500 characters
+- Enter submits, Esc cancels and returns to normal mode
+- On submit: launch plugin via a `tea.Cmd` (see Processing State), set `pluginProcessing = true`
 
 ### 4. Processing State
 
 - `pluginProcessing bool` on the model
-- While true, status bar shows "Processing..." and input is blocked (only Esc to cancel is not supported — wait for result)
-- Plugin runs in a goroutine, sends result back as a `tea.Msg`:
+- While true, status bar shows "Processing..." and **all key input is suppressed** (guard at top of `Update()` before input mode dispatch — only `pluginResultMsg` is processed)
+- HTTP timeout: 60 seconds via `http.Client.Timeout`
+- Plugin execution uses Bubble Tea's `tea.Cmd` pattern, not a raw goroutine:
+
+```go
+func runPluginCmd(p Plugin, content, prompt string, cfg map[string]string) tea.Cmd {
+    return func() tea.Msg {
+        result, err := p.Run(content, prompt, cfg)
+        return pluginResultMsg{result: result, err: err}
+    }
+}
+```
+
+The prompt handler returns this `tea.Cmd`, and Bubble Tea runs it in a goroutine automatically.
 
 ```go
 type pluginResultMsg struct {
@@ -79,8 +92,11 @@ type pluginResultMsg struct {
 }
 ```
 
-- On error: show error in status bar, return to normal mode
-- On success: enter diff view
+A new case for `pluginResultMsg` must be added to the top-level `Update()` method (alongside `tea.WindowSizeMsg` and `tea.KeyMsg`).
+
+- On error: set `pluginProcessing = false`, show error in status bar, return to normal mode
+- On success: set `pluginProcessing = false`, enter diff view
+- If plugin returns identical content: skip diff, show "No changes" in status bar, return to normal mode
 
 ### 5. Diff View
 
@@ -89,8 +105,9 @@ type pluginResultMsg struct {
 - Both displayed in `viewport.Model` instances, scrollable
 - Synchronized scrolling (arrow keys / j,k scroll both viewports)
 - Bottom bar: `Accept changes? (y/n)`
-- `y`: replace editor content with the new version, mark dirty, return to edit mode
+- `y`: replace editor content with the new version, mark dirty, return to edit mode. For new unsaved notes (`newNoteDir != ""`), the `newNoteDir` and `dirty` flags are preserved — the filename is still derived from the (potentially rewritten) first line on save.
 - `n`: discard result, return to editor unchanged
+- On terminal resize during diff: `recalcLayout()` must also resize both diff viewports to `(editorWidth / 2, editorHeight)`
 
 ## New Input Modes
 
@@ -104,6 +121,8 @@ Added to the `inputMode` enum:
 | `inputPluginDiff` | Auto (after result) | `handlePluginDiff` |
 
 Processing state is tracked via `pluginProcessing` bool, not an input mode.
+
+All four new plugin input mode handlers must be added as cases in `handleInputMode()`. Each handler should pass through `Ctrl+Q`/`Ctrl+C` to the quit flow (with unsaved guard if dirty), following the pattern established by `handleFilterInput`.
 
 ## New Model Fields
 
@@ -141,8 +160,8 @@ HTTP POST to `https://openrouter.ai/api/v1/chat/completions`:
 {
   "model": "<configured model>",
   "messages": [
-    {"role": "system", "content": "<user's prompt>"},
-    {"role": "user", "content": "<full note content>"}
+    {"role": "system", "content": "You are a note editor. Apply the following transformation to the note provided by the user. Return only the transformed note content, no explanations."},
+    {"role": "user", "content": "Instruction: <user's prompt>\n\nNote:\n<full note content>"}
   ]
 }
 ```
@@ -168,13 +187,12 @@ All errors surface via `pluginResultMsg.err`, displayed in the status bar.
 
 | File | Responsibility |
 |------|----------------|
-| `plugin.go` | Plugin interface, ConfigField struct, config load/save helpers |
+| `plugin.go` | Plugin interface, ConfigField struct, config load/save helpers, `runPluginCmd`, `pluginResultMsg` |
 | `plugin_openrouter.go` | OpenRouterPlugin struct implementing Plugin interface |
 | `plugin_modal.go` | Plugin selector modal rendering and navigation |
-| `plugin_prompt.go` | Prompt input handling |
-| `plugin_config.go` | Config prompt flow (sequential field inputs) |
+| `plugin_input.go` | Prompt input and config prompt flow handlers (both are bottom-bar text inputs) |
 | `plugin_diff.go` | Side-by-side diff view with accept/reject |
-| `model.go` | Modified: new input modes, Ctrl+Space, plugin state fields |
+| `model.go` | Modified: new input modes, Ctrl+Space, plugin state fields, `pluginResultMsg` case in `Update()` |
 | `statusbar.go` | Modified: show `^Space` in keybindings |
 
 ## Keybinding Changes
@@ -188,6 +206,10 @@ Add `^Space plugins` to the keybinding hints (shown when a file is open).
 | Key | Action |
 |-----|--------|
 | `Ctrl+Space` | Open plugin selector (when file is open) |
+
+`Ctrl+Space` is only handled in the global keybinding section of `Update()`, after the `inputMode != inputNone` check. It is naturally ignored during any active input mode (filter, delete confirm, unsaved guard, plugin modes). It is also ignored when `pluginProcessing == true`.
+
+Note: some terminal emulators may intercept `Ctrl+Space`. This is a known limitation.
 
 ## Known Limitations (v1)
 
