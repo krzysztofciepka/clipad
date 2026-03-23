@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -139,6 +140,12 @@ func (tp TreePanel) View(focused bool) string {
 		}
 
 		line := fmt.Sprintf("%s%s%s", indent, icon, name)
+
+		// Truncate to fit content area (tp.width - 2 accounts for treePanelStyle padding)
+		maxW := tp.width - 2
+		if maxW > 0 && lipgloss.Width(line) > maxW {
+			line = ansi.Truncate(line, maxW, "…")
+		}
 
 		if i == tp.cursor && focused {
 			padded := line

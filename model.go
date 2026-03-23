@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type panel int
@@ -823,7 +824,7 @@ func (m *model) recalcLayout() {
 		m.editorWidth = m.width
 	} else {
 		m.treeWidth = m.width / 4
-		m.editorWidth = m.width - m.treeWidth
+		m.editorWidth = m.width - m.treeWidth - 1 // -1 for tree panel's right border
 	}
 
 	m.tree.width = m.treeWidth
@@ -967,7 +968,19 @@ func (m model) View() string {
 		statusView = pluginSelectorView(m.plugins, m.pluginCursor, m.width)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, mainView, statusView)
+	output := lipgloss.JoinVertical(lipgloss.Left, mainView, statusView)
+
+	// Ensure output never exceeds terminal dimensions to prevent scrolling
+	lines := strings.Split(output, "\n")
+	if len(lines) > m.height {
+		lines = lines[:m.height]
+	}
+	for i := range lines {
+		if lipgloss.Width(lines[i]) > m.width {
+			lines[i] = ansi.Truncate(lines[i], m.width, "")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 
@@ -987,8 +1000,12 @@ func (m model) filterView() string {
 		end = len(m.filterResults)
 	}
 
+	maxW := m.treeWidth - 2 // content area for treePanelStyle padding
 	for i := start; i < end; i++ {
 		line := m.filterResults[i].Name
+		if maxW > 0 && lipgloss.Width(line) > maxW {
+			line = ansi.Truncate(line, maxW, "…")
+		}
 		if i == m.filterCursor {
 			line = treeSelectedStyle.Render(line)
 		}

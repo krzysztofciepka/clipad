@@ -65,7 +65,7 @@ func pluginDiffView(left, right viewport.Model, width, height int) string {
 	leftPanel := diffBorderStyle.Width(halfWidth).Height(height).Render(
 		diffHeaderOriginal + "\n" + left.View())
 
-	rightPanel := lipgloss.NewStyle().Width(width - halfWidth).Height(height).Render(
+	rightPanel := lipgloss.NewStyle().Width(width - halfWidth - 1).Height(height).Render(
 		diffHeaderNew + "\n" + right.View())
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -78,7 +78,7 @@ func newDiffViewports(original, result string, width, height int) (viewport.Mode
 	left := viewport.New(halfWidth-2, contentHeight)
 	left.SetContent(original)
 
-	right := viewport.New(width-halfWidth-2, contentHeight)
+	right := viewport.New(width-halfWidth-3, contentHeight) // -1 border, -2 margin
 	right.SetContent(result)
 
 	return left, right
