@@ -17,6 +17,7 @@ func newEditor() textarea.Model {
 	ta.BlurredStyle.LineNumber = lineNumberStyle
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
 	ta.CharLimit = 0 // no limit
+	ta.MaxHeight = 0 // no line limit
 	ta.Focus()
 	return ta
 }
