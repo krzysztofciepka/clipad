@@ -57,7 +57,26 @@ func (tp *TreePanel) rebuildItems() {
 }
 
 func (tp *TreePanel) clampOffset() {
-	// Ensure cursor is visible after height change
+	// Clamp cursor to valid range
+	if tp.cursor >= len(tp.items) {
+		tp.cursor = len(tp.items) - 1
+	}
+	if tp.cursor < 0 {
+		tp.cursor = 0
+	}
+
+	// Prevent offset from leaving blank space at the bottom
+	if tp.height > 0 && len(tp.items) > 0 {
+		maxOffset := len(tp.items) - tp.height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if tp.offset > maxOffset {
+			tp.offset = maxOffset
+		}
+	}
+
+	// Ensure cursor is visible
 	if tp.cursor < tp.offset {
 		tp.offset = tp.cursor
 	}
@@ -111,11 +130,21 @@ func (tp *TreePanel) selectedNode() *TreeNode {
 }
 
 func (tp TreePanel) View(focused bool) string {
+	if tp.width <= 0 || tp.height <= 0 {
+		return ""
+	}
+
 	var b strings.Builder
 
 	end := tp.offset + tp.height
 	if end > len(tp.items) {
 		end = len(tp.items)
+	}
+
+	// Content area width (treePanelStyle has Padding(0,1) = 2 chars horizontal)
+	maxW := tp.width - 2
+	if maxW < 1 {
+		maxW = 1
 	}
 
 	for i := tp.offset; i < end; i++ {
@@ -141,17 +170,15 @@ func (tp TreePanel) View(focused bool) string {
 
 		line := fmt.Sprintf("%s%s%s", indent, icon, name)
 
-		// Truncate to fit content area (tp.width - 2 accounts for treePanelStyle padding)
-		maxW := tp.width - 2
-		if maxW > 0 && lipgloss.Width(line) > maxW {
+		if lipgloss.Width(line) > maxW {
 			line = ansi.Truncate(line, maxW, "…")
 		}
 
 		if i == tp.cursor && focused {
 			padded := line
 			lineWidth := lipgloss.Width(padded)
-			if lineWidth < tp.width-2 {
-				padded += strings.Repeat(" ", tp.width-2-lineWidth)
+			if lineWidth < maxW {
+				padded += strings.Repeat(" ", maxW-lineWidth)
 			}
 			line = treeSelectedStyle.Render(padded)
 		}
@@ -168,5 +195,5 @@ func (tp TreePanel) View(focused bool) string {
 		rendered += "\n"
 	}
 
-	return treePanelStyle.Width(tp.width).Height(tp.height).Render(rendered)
+	return treePanelStyle.Width(tp.width).MaxHeight(tp.height).Render(rendered)
 }

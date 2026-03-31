@@ -160,13 +160,17 @@ func (m model) isDirty() bool {
 }
 
 func (m model) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(textarea.Blink, watchVault(m.vault))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case fileChangedMsg:
+		m.refreshTree()
+		return m, watchVault(m.vault)
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -818,13 +822,22 @@ func (m *model) recalcLayout() {
 		m.editorHeight = 1
 	}
 
-	// Hide tree on very narrow terminals
-	if m.width < 50 {
+	const minTreeWidth = 20
+
+	// Hide tree only on extremely narrow terminals where it can't fit
+	if m.width < minTreeWidth+10 {
 		m.treeWidth = 0
 		m.editorWidth = m.width
 	} else {
 		m.treeWidth = m.width / 4
+		if m.treeWidth < minTreeWidth {
+			m.treeWidth = minTreeWidth
+		}
 		m.editorWidth = m.width - m.treeWidth - 1 // -1 for tree panel's right border
+		if m.editorWidth < 10 {
+			m.editorWidth = 10
+			m.treeWidth = m.width - m.editorWidth - 1
+		}
 	}
 
 	m.tree.width = m.treeWidth
@@ -1015,7 +1028,7 @@ func (m model) filterView() string {
 		}
 	}
 
-	return treePanelStyle.Width(m.treeWidth).Height(m.treeHeight).Render(b.String())
+	return treePanelStyle.Width(m.treeWidth).MaxHeight(m.treeHeight).Render(b.String())
 }
 
 func wordWrap(s string, width int) string {
