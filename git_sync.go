@@ -72,17 +72,17 @@ func runGitSync(vault, remote string) tea.Cmd {
 		// Fetch
 		gitCmd(vault, "fetch", "origin")
 
-		// If no local commits yet, make an initial commit before pulling
+		// If no local commits yet, make an initial commit and push
 		localHead, localErr := gitCmd(vault, "rev-parse", "HEAD")
 		if localErr != nil {
-			// No commits — stage everything and create initial commit
 			if _, err := gitCmd(vault, "add", "-A"); err != nil {
 				return gitSyncResultMsg{err: fmt.Errorf("git add: %w", err)}
 			}
 			if _, err := gitCmd(vault, "commit", "-m", "clipad: initial backup"); err != nil {
 				return gitSyncResultMsg{err: fmt.Errorf("git commit: %w", err)}
 			}
-			localHead, _ = gitCmd(vault, "rev-parse", "HEAD")
+			_, pushErr := gitCmd(vault, "push", "-u", "origin", "HEAD")
+			return gitSyncResultMsg{pushed: true, pushErr: pushErr}
 		}
 
 		// Check if remote has commits we don't have

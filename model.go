@@ -1354,18 +1354,44 @@ func wordWrap(s string, width int) string {
 	}
 	var result strings.Builder
 	for _, line := range strings.Split(s, "\n") {
-		for len(line) > width {
-			// Find last space within width
-			cut := strings.LastIndex(line[:width], " ")
-			if cut <= 0 {
-				cut = width
+		runes := []rune(line)
+		for lipgloss.Width(string(runes)) > width {
+			// Find last space within visual width
+			cut := -1
+			w := 0
+			for i, r := range runes {
+				w += lipgloss.Width(string(r))
+				if w > width {
+					break
+				}
+				if r == ' ' {
+					cut = i
+				}
 			}
-			result.WriteString(line[:cut])
+			if cut <= 0 {
+				// No space found — hard break at width
+				w = 0
+				for i, r := range runes {
+					rw := lipgloss.Width(string(r))
+					if w+rw > width {
+						cut = i
+						break
+					}
+					w += rw
+				}
+			}
+			if cut <= 0 {
+				break // safety: avoid infinite loop
+			}
+			result.WriteString(string(runes[:cut]))
 			result.WriteByte('\n')
-			line = line[cut:]
-			line = strings.TrimLeft(line, " ")
+			runes = runes[cut:]
+			// Trim leading spaces
+			for len(runes) > 0 && runes[0] == ' ' {
+				runes = runes[1:]
+			}
 		}
-		result.WriteString(line)
+		result.WriteString(string(runes))
 		result.WriteByte('\n')
 	}
 	return strings.TrimRight(result.String(), "\n")
