@@ -41,6 +41,7 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pluginDiffResult = ""
 		return m, nil
 	case "n", "esc":
+		m.shortcutOnSelection = false
 		m.inputMode = inputNone
 		m.pluginActive = nil
 		m.pluginDiffOriginal = ""

@@ -121,6 +121,7 @@ type model struct {
 	shortcutEditing     int
 	shortcutTempName    string
 	shortcutOnSelection bool
+	shortcutPending     bool // true when shortcut awaits OpenRouter config completion
 	shortcutNameInput   textinput.Model
 	shortcutPromptInput textinput.Model
 }
@@ -318,7 +319,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == editorPanel && m.editorMode == modeEdit {
-				m.editor.Paste()
+				cmd := m.editor.Paste()
+				return m, cmd
 			}
 			return m, nil
 

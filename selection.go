@@ -338,14 +338,6 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	case "ctrl+a":
 		e.SelectAll()
 		return nil
-	case "ctrl+c":
-		e.Copy()
-		return nil
-	case "ctrl+x":
-		e.Cut()
-		return nil
-	case "ctrl+v":
-		return e.Paste()
 	case "backspace", "delete":
 		if e.selActive {
 			e.DeleteSelection()

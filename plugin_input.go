@@ -61,7 +61,23 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err := savePluginConfig(m.pluginActive.Name(), m.pluginConfigValues); err != nil {
 				m.errMsg = "Failed to save plugin config: " + err.Error()
 				m.inputMode = inputNone
+				m.shortcutPending = false
 				return m, nil
+			}
+			// If config was triggered from a shortcut, execute the pending shortcut
+			if m.shortcutPending {
+				m.shortcutPending = false
+				shortcut := m.shortcuts[m.shortcutCursor]
+				cfg, _ := loadPluginConfig("openrouter")
+				content := m.editor.Value()
+				m.shortcutOnSelection = m.editor.selActive
+				if m.shortcutOnSelection {
+					content = m.editor.SelectedText()
+				}
+				m.pluginDiffOriginal = content
+				m.pluginProcessing = true
+				m.inputMode = inputNone
+				return m, runShortcutCmd(shortcut, content, cfg)
 			}
 			m.inputMode = inputPluginPrompt
 			m.pluginPromptInput.SetValue("")

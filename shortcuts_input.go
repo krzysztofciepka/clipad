@@ -22,6 +22,7 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		shortcut := m.shortcuts[m.shortcutCursor]
 		cfg, err := loadPluginConfig("openrouter")
 		if err != nil || !pluginConfigComplete((&OpenRouterPlugin{}).ConfigFields(), cfg) {
+			m.shortcutPending = true
 			m.pluginActive = &OpenRouterPlugin{}
 			m.pluginConfigFields = m.pluginActive.ConfigFields()
 			m.pluginConfigIndex = 0
