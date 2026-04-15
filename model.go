@@ -350,6 +350,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pendingAction = pendingQuit
 				return m, nil
 			}
+			if m.gitSyncRunning {
+				m.gitSyncQuitting = true
+				return m, nil
+			}
 			return m, tea.Quit
 
 		case "ctrl+c":
@@ -829,6 +833,10 @@ func (m model) executePendingAction() (tea.Model, tea.Cmd) {
 	switch m.pendingAction {
 	case pendingQuit:
 		m.pendingAction = pendingNone
+		if m.gitSyncRunning {
+			m.gitSyncQuitting = true
+			return m, nil
+		}
 		return m, tea.Quit
 	case pendingSwitchFile:
 		m.openFile(m.pendingSwitchPath)
