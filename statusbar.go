@@ -22,6 +22,10 @@ var (
 		Background(lipgloss.Color("236")).
 		Foreground(lipgloss.Color("196")).
 		Bold(true)
+
+	statusFlashStyle = lipgloss.NewStyle().
+		Background(lipgloss.Color("236")).
+		Foreground(lipgloss.Color("76"))
 )
 
 type StatusBar struct {
@@ -65,10 +69,7 @@ func (s StatusBar) View() string {
 	if s.errMsg != "" {
 		right = statusErrorStyle.Render(s.errMsg)
 	} else if s.flashMsg != "" {
-		right = lipgloss.NewStyle().
-			Background(lipgloss.Color("236")).
-			Foreground(lipgloss.Color("76")).
-			Render(s.flashMsg)
+		right = statusFlashStyle.Render(s.flashMsg)
 	} else if s.filename != "" {
 		modified := ""
 		if s.dirty {
