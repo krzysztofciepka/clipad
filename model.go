@@ -599,6 +599,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleShortcutPrompt(msg)
 	case inputShortcutDeleteConfirm:
 		return m.handleShortcutDeleteConfirm(msg)
+	case inputGitRemote:
+		return m.handleGitRemoteInput(msg)
 	}
 	return m, nil
 }
