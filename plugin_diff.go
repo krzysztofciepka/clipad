@@ -82,11 +82,13 @@ func newDiffViewports(original, result string, width, height int) (viewport.Mode
 	halfWidth := width / 2
 	contentHeight := height - 1
 
-	left := viewport.New(halfWidth-2, contentHeight)
-	left.SetContent(original)
+	leftWidth := halfWidth - 2
+	left := viewport.New(leftWidth, contentHeight)
+	left.SetContent(wordWrap(original, leftWidth))
 
-	right := viewport.New(width-halfWidth-3, contentHeight) // -1 border, -2 margin
-	right.SetContent(result)
+	rightWidth := width - halfWidth - 3 // -1 border, -2 margin
+	right := viewport.New(rightWidth, contentHeight)
+	right.SetContent(wordWrap(result, rightWidth))
 
 	return left, right
 }
