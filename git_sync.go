@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -115,6 +117,59 @@ func runGitSync(vault, remote string) tea.Cmd {
 	}
 }
 
+// syncConflictName returns "name.sync-conflict.ext" for "name.ext",
+// or ".sync-conflict.name" for files without an extension.
+func syncConflictName(name string) string {
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return ".sync-conflict." + name
+	}
+	base := strings.TrimSuffix(name, ext)
+	return base + ".sync-conflict" + ext
+}
+
 func handleSyncConflict(vault string) gitSyncResultMsg {
-	return gitSyncResultMsg{err: fmt.Errorf("sync conflict: not yet implemented")}
+	// Abort the rebase to restore local state
+	gitCmd(vault, "rebase", "--abort")
+
+	// Find files that differ between local and remote
+	out, err := gitCmd(vault, "diff", "--name-only", "HEAD", "origin/HEAD")
+	if err != nil || out == "" {
+		return gitSyncResultMsg{err: fmt.Errorf("sync conflict: could not identify conflicting files")}
+	}
+
+	// Stash any staged/unstaged changes so merge can proceed cleanly
+	gitCmd(vault, "stash")
+
+	// Merge origin/HEAD into local, preferring local version on conflicts
+	gitCmd(vault, "merge", "origin/HEAD", "-X", "ours", "--no-edit")
+
+	// Restore local changes
+	gitCmd(vault, "stash", "pop")
+
+	// Write remote versions of conflicting files as .sync-conflict copies
+	files := strings.Split(out, "\n")
+	for _, f := range files {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		// Get the remote version of the file
+		remoteContent, err := gitCmd(vault, "show", "origin/HEAD:"+f)
+		if err != nil {
+			continue // file may have been deleted on remote
+		}
+		// Write as sync-conflict file
+		conflictName := syncConflictName(filepath.Base(f))
+		conflictPath := filepath.Join(vault, filepath.Dir(f), conflictName)
+		os.WriteFile(conflictPath, []byte(remoteContent), 0o644)
+	}
+
+	// Commit conflict files and push
+	gitCmd(vault, "add", "-A")
+	timestamp := time.Now().Format("2006-01-02 15:04")
+	gitCmd(vault, "commit", "-m", fmt.Sprintf("clipad sync: resolved conflicts %s", timestamp))
+	_, pushErr := gitCmd(vault, "push", "-u", "origin", "HEAD")
+
+	return gitSyncResultMsg{pulled: true, pushed: true, pushErr: pushErr}
 }

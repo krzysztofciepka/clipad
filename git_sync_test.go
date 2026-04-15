@@ -66,11 +66,22 @@ func initLocalWithRemote(t *testing.T, remote string) string {
 	run("remote", "add", "origin", remote)
 	run("config", "user.email", "test@test.com")
 	run("config", "user.name", "test")
-	// Create initial commit so we have a branch
-	os.WriteFile(filepath.Join(local, ".gitkeep"), []byte(""), 0o644)
-	run("add", "-A")
-	run("commit", "-m", "initial")
-	run("push", "-u", "origin", "HEAD")
+
+	// Fetch to see if remote already has commits
+	cmd := exec.Command("git", "-C", local, "fetch", "origin")
+	cmd.Run()
+	out, _ := exec.Command("git", "-C", local, "ls-remote", "--heads", remote).Output()
+	if strings.Contains(string(out), "refs/heads/") {
+		// Remote already has commits — check out from remote
+		run("checkout", "-b", "master", "origin/master")
+		run("branch", "--set-upstream-to=origin/master", "master")
+	} else {
+		// Fresh remote — create initial commit and push
+		os.WriteFile(filepath.Join(local, ".gitkeep"), []byte(""), 0o644)
+		run("add", "-A")
+		run("commit", "-m", "initial")
+		run("push", "-u", "origin", "HEAD")
+	}
 	return local
 }
 
@@ -137,5 +148,96 @@ func TestRunGitSync_RemoteChanges(t *testing.T) {
 	// Verify the file arrived locally
 	if _, err := os.Stat(filepath.Join(local, "from-other.md")); err != nil {
 		t.Error("from-other.md not found in local after pull")
+	}
+}
+
+func TestRunGitSync_Conflict(t *testing.T) {
+	remote := initBareRemote(t)
+	local := initLocalWithRemote(t, remote)
+	other := initLocalWithRemote(t, remote)
+
+	// Both machines edit the same file
+	os.WriteFile(filepath.Join(other, ".gitkeep"), []byte("other content"), 0o644)
+	exec.Command("git", "-C", other, "add", "-A").Run()
+	exec.Command("git", "-C", other, "commit", "-m", "other edit").Run()
+	exec.Command("git", "-C", other, "push").Run()
+
+	os.WriteFile(filepath.Join(local, ".gitkeep"), []byte("local content"), 0o644)
+	exec.Command("git", "-C", local, "add", "-A").Run()
+	exec.Command("git", "-C", local, "commit", "-m", "local edit").Run()
+
+	cmd := runGitSync(local, remote)
+	msg := cmd().(gitSyncResultMsg)
+
+	if msg.err != nil {
+		t.Fatalf("unexpected error: %v", msg.err)
+	}
+	if !msg.pushed {
+		t.Error("pushed = false, want true after conflict resolution")
+	}
+
+	// The sync-conflict file should exist with the remote version
+	conflictPath := filepath.Join(local, ".sync-conflict.gitkeep")
+	data, err := os.ReadFile(conflictPath)
+	if err != nil {
+		t.Fatalf(".sync-conflict.gitkeep not found: %v", err)
+	}
+	if string(data) != "other content" {
+		t.Errorf("conflict file content = %q, want %q", string(data), "other content")
+	}
+
+	// Local version should be preserved
+	localData, _ := os.ReadFile(filepath.Join(local, ".gitkeep"))
+	if string(localData) != "local content" {
+		t.Errorf("local file content = %q, want %q", string(localData), "local content")
+	}
+}
+
+func TestRunGitSync_ConflictWithExtension(t *testing.T) {
+	remote := initBareRemote(t)
+	local := initLocalWithRemote(t, remote)
+	other := initLocalWithRemote(t, remote)
+
+	// Both machines edit a .md file
+	os.WriteFile(filepath.Join(other, "notes.md"), []byte("remote notes"), 0o644)
+	exec.Command("git", "-C", other, "add", "-A").Run()
+	exec.Command("git", "-C", other, "commit", "-m", "other notes").Run()
+	exec.Command("git", "-C", other, "push").Run()
+
+	os.WriteFile(filepath.Join(local, "notes.md"), []byte("local notes"), 0o644)
+	exec.Command("git", "-C", local, "add", "-A").Run()
+	exec.Command("git", "-C", local, "commit", "-m", "local notes").Run()
+
+	cmd := runGitSync(local, remote)
+	msg := cmd().(gitSyncResultMsg)
+
+	if msg.err != nil {
+		t.Fatalf("unexpected error: %v", msg.err)
+	}
+
+	// Conflict file should be notes.sync-conflict.md
+	conflictPath := filepath.Join(local, "notes.sync-conflict.md")
+	if _, err := os.Stat(conflictPath); err != nil {
+		t.Fatalf("notes.sync-conflict.md not found: %v", err)
+	}
+}
+
+func TestSyncConflictName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"notes.md", "notes.sync-conflict.md"},
+		{"image.png", "image.sync-conflict.png"},
+		{"Makefile", ".sync-conflict.Makefile"},
+		{"archive.tar.gz", "archive.tar.sync-conflict.gz"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := syncConflictName(tt.input)
+			if got != tt.want {
+				t.Errorf("syncConflictName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
