@@ -198,5 +198,5 @@ func (tp TreePanel) View(focused bool) string {
 		rendered += "\n"
 	}
 
-	return treePanelStyle.Width(tp.width).MaxHeight(tp.height).Render(rendered)
+	return treePanelStyle.Width(tp.width).Height(tp.height).Render(rendered)
 }
