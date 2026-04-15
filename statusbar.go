@@ -32,6 +32,7 @@ type StatusBar struct {
 	col        int
 	dirty      bool
 	errMsg     string
+	flashMsg   string // non-error flash message (e.g. "Auto-saved")
 	fileOpen   bool
 }
 
@@ -63,6 +64,11 @@ func (s StatusBar) View() string {
 	right := ""
 	if s.errMsg != "" {
 		right = statusErrorStyle.Render(s.errMsg)
+	} else if s.flashMsg != "" {
+		right = lipgloss.NewStyle().
+			Background(lipgloss.Color("236")).
+			Foreground(lipgloss.Color("76")).
+			Render(s.flashMsg)
 	} else if s.filename != "" {
 		modified := ""
 		if s.dirty {

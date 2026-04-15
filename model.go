@@ -93,6 +93,8 @@ type model struct {
 
 	errMsg string
 
+	autoSaveFlash bool
+
 	// Plugin system
 	plugins            []Plugin
 	pluginCursor       int
@@ -160,7 +162,7 @@ func (m model) isDirty() bool {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, watchVault(m.vault))
+	return tea.Batch(textarea.Blink, watchVault(m.vault), autoSaveTick())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -175,6 +177,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.recalcLayout()
+		return m, nil
+
+	case autoSaveTickMsg:
+		if m.currentFile != "" && m.isDirty() {
+			m.saveCurrentFile()
+			if m.errMsg == "" {
+				m.autoSaveFlash = true
+				return m, tea.Batch(autoSaveTick(), autoSaveFadeTick())
+			}
+		}
+		return m, autoSaveTick()
+
+	case autoSaveFadeMsg:
+		m.autoSaveFlash = false
 		return m, nil
 
 	case pluginResultMsg:
@@ -934,6 +950,9 @@ func (m model) View() string {
 		dirty:      m.isDirty(),
 		errMsg:     m.errMsg,
 		fileOpen:   m.currentFile != "" || m.newNoteDir != "",
+	}
+	if m.autoSaveFlash {
+		sb.flashMsg = "Auto-saved"
 	}
 
 	statusView := sb.View()
