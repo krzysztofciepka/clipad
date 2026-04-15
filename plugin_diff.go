@@ -39,7 +39,10 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pluginActive = nil
 		m.pluginDiffOriginal = ""
 		m.pluginDiffResult = ""
-		return m, nil
+		m.activePanel = editorPanel
+		m.editorMode = modeEdit
+		cmd := m.editor.Focus()
+		return m, cmd
 	case "n", "esc":
 		m.shortcutOnSelection = false
 		m.inputMode = inputNone
