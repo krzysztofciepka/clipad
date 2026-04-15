@@ -272,6 +272,19 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 	return nil
 }
 
+func (e *SelectableEditor) adjustViewOffset() {
+	if e.height <= 0 {
+		return
+	}
+	curLine := e.Line()
+	if curLine < e.viewOffset {
+		e.viewOffset = curLine
+	}
+	if curLine >= e.viewOffset+e.height {
+		e.viewOffset = curLine - e.height + 1
+	}
+}
+
 func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	key := msg.String()
 
@@ -279,26 +292,32 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	case "shift+left":
 		e.startSelectionIfNeeded()
 		e.moveCursorLeft()
+		e.adjustViewOffset()
 		return nil
 	case "shift+right":
 		e.startSelectionIfNeeded()
 		e.moveCursorRight()
+		e.adjustViewOffset()
 		return nil
 	case "shift+up":
 		e.startSelectionIfNeeded()
 		e.moveCursorUp()
+		e.adjustViewOffset()
 		return nil
 	case "shift+down":
 		e.startSelectionIfNeeded()
 		e.moveCursorDown()
+		e.adjustViewOffset()
 		return nil
 	case "shift+home":
 		e.startSelectionIfNeeded()
 		e.SetCursor(0)
+		e.adjustViewOffset()
 		return nil
 	case "shift+end":
 		e.startSelectionIfNeeded()
 		e.CursorEnd()
+		e.adjustViewOffset()
 		return nil
 	case "ctrl+left":
 		e.ClearSelection()
@@ -355,22 +374,15 @@ func (e SelectableEditor) View() string {
 	return e.renderWithSelection()
 }
 
-func (e *SelectableEditor) renderWithSelection() string {
+func (e SelectableEditor) renderWithSelection() string {
 	content := e.Value()
 	lines := strings.Split(content, "\n")
-	curLine := e.Line()
 	height := e.height
 	if height <= 0 {
 		height = 10
 	}
 
-	if curLine < e.viewOffset {
-		e.viewOffset = curLine
-	}
-	if curLine >= e.viewOffset+height {
-		e.viewOffset = curLine - height + 1
-	}
-
+	// viewOffset is maintained by adjustViewOffset() in HandleKey
 	sLine, sCol, eLine, eCol := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
 
 	numWidth := len(fmt.Sprintf("%d", len(lines)))
