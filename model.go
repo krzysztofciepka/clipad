@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -55,6 +56,7 @@ const (
 	inputShortcutName
 	inputShortcutPrompt
 	inputShortcutDeleteConfirm
+	inputGitRemote
 )
 
 type model struct {
@@ -124,6 +126,13 @@ type model struct {
 	shortcutPending     bool // true when shortcut awaits OpenRouter config completion
 	shortcutNameInput   textinput.Model
 	shortcutPromptInput textinput.Model
+
+	// Git sync
+	gitSyncRunning  bool
+	gitSyncFlash    string
+	gitSyncError    string
+	gitSyncQuitting bool
+	gitRemoteInput  textinput.Model
 }
 
 func newModel(vault string, plugins []Plugin) model {
@@ -155,6 +164,10 @@ func newModel(vault string, plugins []Plugin) model {
 	sp.Placeholder = "prompt template"
 	sp.CharLimit = 500
 
+	gr := textinput.New()
+	gr.Placeholder = "git@github.com:user/vault.git"
+	gr.CharLimit = 512
+
 	m := model{
 		vault:              vault,
 		activePanel:        treePanel,
@@ -169,6 +182,7 @@ func newModel(vault string, plugins []Plugin) model {
 		shortcutNameInput:   sn,
 		shortcutPromptInput: sp,
 		shortcutEditing:     -1,
+		gitRemoteInput:      gr,
 	}
 
 	root, err := buildTree(vault)
@@ -190,7 +204,7 @@ func (m model) isDirty() bool {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, watchVault(m.vault), autoSaveTick())
+	return tea.Batch(textarea.Blink, watchVault(m.vault), autoSaveTick(), gitSyncCheckImmediate())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -219,6 +233,63 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case autoSaveFadeMsg:
 		m.autoSaveFlash = false
+		return m, nil
+
+	case gitSyncCheckMsg:
+		if m.gitSyncRunning {
+			return m, gitSyncCheck()
+		}
+		cfg, err := loadConfig()
+		if err != nil {
+			return m, gitSyncCheck()
+		}
+		if cfg.GitRemote == "" {
+			// No remote configured — prompt user
+			m.inputMode = inputGitRemote
+			m.gitRemoteInput.SetValue("")
+			cmd := m.gitRemoteInput.Focus()
+			return m, cmd
+		}
+		if cfg.LastSync != nil && time.Since(*cfg.LastSync) < 24*time.Hour {
+			return m, gitSyncCheck()
+		}
+		m.gitSyncRunning = true
+		m.gitSyncError = ""
+		return m, tea.Batch(runGitSync(m.vault, cfg.GitRemote), gitSyncCheck())
+
+	case gitSyncResultMsg:
+		m.gitSyncRunning = false
+		if msg.err != nil {
+			m.gitSyncError = "Sync failed: " + msg.err.Error()
+		} else if msg.pushErr != nil {
+			m.gitSyncError = "Sync: push failed"
+			// Still update LastSync since commit succeeded locally
+			m.updateLastSync()
+		} else {
+			m.gitSyncError = ""
+			m.updateLastSync()
+			if msg.pulled && msg.pushed {
+				m.gitSyncFlash = "Synced"
+			} else if msg.pulled {
+				m.gitSyncFlash = "Synced from remote"
+				m.refreshTree()
+			} else if msg.pushed {
+				m.gitSyncFlash = "Backed up"
+			}
+		}
+		if m.gitSyncFlash != "" {
+			if m.gitSyncQuitting {
+				return m, tea.Quit
+			}
+			return m, gitSyncFadeTick()
+		}
+		if m.gitSyncQuitting {
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case gitSyncFadeMsg:
+		m.gitSyncFlash = ""
 		return m, nil
 
 	case pluginResultMsg:
@@ -1271,4 +1342,14 @@ func highlightMatches(content, term string, wrapWidth int) string {
 		remaining = remaining[idx+len(term):]
 	}
 	return result.String()
+}
+
+func (m *model) updateLastSync() {
+	cfg, err := loadConfig()
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	cfg.LastSync = &now
+	saveConfig(cfg)
 }
