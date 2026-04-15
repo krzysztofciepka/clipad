@@ -30,18 +30,17 @@ func (p *OpenRouterPlugin) Run(content string, prompt string, config map[string]
 	if url == "" {
 		url = defaultOpenRouterURL
 	}
+	systemPrompt := "You are a note editor. Apply the following transformation to the note provided by the user. Return only the transformed note content, no explanations."
+	userMessage := fmt.Sprintf("Instruction: %s\n\nNote:\n%s", prompt, content)
+	return callOpenRouter(url, config["api_key"], config["model"], systemPrompt, userMessage)
+}
 
+func callOpenRouter(url, apiKey, model, systemPrompt, userMessage string) (string, error) {
 	reqBody := map[string]interface{}{
-		"model": config["model"],
+		"model": model,
 		"messages": []map[string]string{
-			{
-				"role":    "system",
-				"content": "You are a note editor. Apply the following transformation to the note provided by the user. Return only the transformed note content, no explanations.",
-			},
-			{
-				"role":    "user",
-				"content": fmt.Sprintf("Instruction: %s\n\nNote:\n%s", prompt, content),
-			},
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": userMessage},
 		},
 	}
 
@@ -56,7 +55,7 @@ func (p *OpenRouterPlugin) Run(content string, prompt string, config map[string]
 		return "", fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+config["api_key"])
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
