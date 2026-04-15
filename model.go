@@ -1196,10 +1196,22 @@ func (m model) View() string {
 	}
 	if m.autoSaveFlash {
 		sb.flashMsg = "Auto-saved"
+	} else if m.gitSyncFlash != "" {
+		sb.flashMsg = m.gitSyncFlash
+	}
+	if m.gitSyncError != "" {
+		sb.errMsg = m.gitSyncError
 	}
 
 	statusView := sb.View()
-	if m.pluginProcessing {
+	if m.gitSyncQuitting {
+		statusView = statusBarStyle.Width(m.width).Render("Waiting for sync to finish...")
+	} else if m.gitSyncRunning {
+		statusView = statusBarStyle.Width(m.width).Render("Syncing...")
+	} else if m.inputMode == inputGitRemote {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Git remote URL: " + m.gitRemoteInput.View())
+	} else if m.pluginProcessing {
 		statusView = statusBarStyle.Width(m.width).Render("Processing...")
 	} else if m.inputMode == inputPluginConfig {
 		field := m.pluginConfigFields[m.pluginConfigIndex]
