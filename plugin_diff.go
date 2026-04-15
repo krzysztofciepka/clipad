@@ -27,7 +27,12 @@ var (
 func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y":
-		m.editor.SetValue(m.pluginDiffResult)
+		if m.shortcutOnSelection {
+			m.editor.ReplaceSelection(m.pluginDiffResult)
+			m.shortcutOnSelection = false
+		} else {
+			m.editor.SetValue(m.pluginDiffResult)
+		}
 		m.editor.ClearSelection()
 		// cleanContent unchanged — editor now differs from it, so isDirty() returns true
 		m.inputMode = inputNone

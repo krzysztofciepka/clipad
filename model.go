@@ -51,6 +51,10 @@ const (
 	inputNewFolder
 	inputReplaceSearch
 	inputReplaceWith
+	inputShortcutSelect
+	inputShortcutName
+	inputShortcutPrompt
+	inputShortcutDeleteConfirm
 )
 
 type model struct {
@@ -110,6 +114,15 @@ type model struct {
 	pluginDiffViewL    viewport.Model
 	pluginDiffViewR    viewport.Model
 	pluginProcessing   bool
+
+	// AI shortcuts
+	shortcuts           []AIShortcut
+	shortcutCursor      int
+	shortcutEditing     int
+	shortcutTempName    string
+	shortcutOnSelection bool
+	shortcutNameInput   textinput.Model
+	shortcutPromptInput textinput.Model
 }
 
 func newModel(vault string, plugins []Plugin) model {
@@ -133,6 +146,14 @@ func newModel(vault string, plugins []Plugin) model {
 	rw.Placeholder = "replace with"
 	rw.CharLimit = 256
 
+	sn := textinput.New()
+	sn.Placeholder = "shortcut name"
+	sn.CharLimit = 256
+
+	sp := textinput.New()
+	sp.Placeholder = "prompt template"
+	sp.CharLimit = 500
+
 	m := model{
 		vault:              vault,
 		activePanel:        treePanel,
@@ -144,6 +165,9 @@ func newModel(vault string, plugins []Plugin) model {
 		replaceWithInput:   rw,
 		plugins:           plugins,
 		pluginPromptInput: pi,
+		shortcutNameInput:   sn,
+		shortcutPromptInput: sp,
+		shortcutEditing:     -1,
 	}
 
 	root, err := buildTree(vault)
@@ -154,6 +178,8 @@ func newModel(vault string, plugins []Plugin) model {
 		m.tree.root = root
 		m.tree.rebuildItems()
 	}
+
+	m.shortcuts, _ = loadShortcuts()
 
 	return m
 }
@@ -207,6 +233,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errMsg = "No changes"
 			m.inputMode = inputNone
 			m.pluginActive = nil
+			m.pluginDiffOriginal = ""
+			return m, nil
+		}
+		m.pluginDiffResult = msg.result
+		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
+			m.pluginDiffOriginal, msg.result, m.editorWidth, m.editorHeight)
+		m.inputMode = inputPluginDiff
+		return m, nil
+
+	case shortcutResultMsg:
+		m.pluginProcessing = false
+		if msg.err != nil {
+			m.errMsg = "Shortcut error: " + msg.err.Error()
+			m.inputMode = inputNone
+			m.pluginDiffOriginal = ""
+			return m, nil
+		}
+		if msg.result == m.pluginDiffOriginal {
+			m.errMsg = "No changes"
+			m.inputMode = inputNone
 			m.pluginDiffOriginal = ""
 			return m, nil
 		}
@@ -308,6 +354,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.inputMode = inputPluginSelect
 					m.pluginCursor = 0
 				}
+			}
+			return m, nil
+
+		case "ctrl+g":
+			if m.currentFile != "" || m.newNoteDir != "" {
+				m.shortcuts, _ = loadShortcuts()
+				m.inputMode = inputShortcutSelect
+				m.shortcutCursor = 0
+			}
+			return m, nil
+
+		case "ctrl+l":
+			if m.currentFile != "" || m.newNoteDir != "" {
+				m.shortcutEditing = -1
+				m.inputMode = inputShortcutName
+				m.shortcutNameInput.SetValue("")
+				cmd := m.shortcutNameInput.Focus()
+				return m, cmd
 			}
 			return m, nil
 
@@ -450,6 +514,14 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePluginPrompt(msg)
 	case inputPluginDiff:
 		return m.handlePluginDiff(msg)
+	case inputShortcutSelect:
+		return m.handleShortcutSelect(msg)
+	case inputShortcutName:
+		return m.handleShortcutName(msg)
+	case inputShortcutPrompt:
+		return m.handleShortcutPrompt(msg)
+	case inputShortcutDeleteConfirm:
+		return m.handleShortcutDeleteConfirm(msg)
 	}
 	return m, nil
 }
@@ -970,7 +1042,9 @@ func (m model) View() string {
 	}
 
 	var rightView string
-	if m.inputMode == inputPluginDiff {
+	if m.inputMode == inputShortcutSelect {
+		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.editorWidth, m.editorHeight)
+	} else if m.inputMode == inputPluginDiff {
 		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
 	} else if m.currentFile == "" && m.newNoteDir == "" {
 		placeholder := lipgloss.NewStyle().
@@ -1069,6 +1143,19 @@ func (m model) View() string {
 	} else if m.inputMode == inputReplaceWith {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Replace with: " + m.replaceWithInput.View())
+	} else if m.inputMode == inputShortcutName {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Shortcut name: " + m.shortcutNameInput.View())
+	} else if m.inputMode == inputShortcutPrompt {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Prompt: " + m.shortcutPromptInput.View())
+	} else if m.inputMode == inputShortcutDeleteConfirm {
+		name := ""
+		if m.shortcutCursor < len(m.shortcuts) {
+			name = m.shortcuts[m.shortcutCursor].Name
+		}
+		statusView = statusBarStyle.Width(m.width).Render(
+			fmt.Sprintf("Delete shortcut %q? (y/n)", name))
 	} else if m.inputMode == inputConfirmDelete {
 		node := m.tree.selectedNode()
 		name := ""

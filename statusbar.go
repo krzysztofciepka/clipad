@@ -62,7 +62,7 @@ func (s StatusBar) View() string {
 	)
 
 	if s.fileOpen {
-		hints = append(hints, hint{"^Spc", "plugins"})
+		hints = append(hints, hint{"^Spc", "plugins"}, hint{"^G", "AI"})
 	}
 
 	right := ""
