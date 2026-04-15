@@ -67,7 +67,7 @@ type model struct {
 	treeWidth  int
 	treeHeight int
 
-	editor       textarea.Model
+	editor       SelectableEditor
 	editorWidth  int
 	editorHeight int
 
@@ -137,7 +137,7 @@ func newModel(vault string, plugins []Plugin) model {
 		vault:              vault,
 		activePanel:        treePanel,
 		editorMode:         modeEdit,
-		editor:             newEditor(),
+		editor:             newSelectableEditor(),
 		filterInput:        fi,
 		newFolderInput:     nf,
 		replaceSearchInput: rs,
@@ -234,6 +234,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 
+		case "ctrl+c":
+			if m.activePanel == treePanel {
+				node := m.tree.selectedNode()
+				if node != nil && !node.IsDir {
+					m.fileClip = fileClipboard{path: node.Path, op: clipCopy}
+					m.tree.cutPath = ""
+					m.errMsg = "Copied: " + node.Name
+				}
+				return m, nil
+			}
+			if m.activePanel == editorPanel && m.editorMode == modeEdit {
+				m.editor.Copy()
+			}
+			return m, nil
+
+		case "ctrl+x":
+			if m.activePanel == treePanel {
+				node := m.tree.selectedNode()
+				if node != nil && !node.IsDir {
+					m.fileClip = fileClipboard{path: node.Path, op: clipCut}
+					m.tree.cutPath = node.Path
+					m.errMsg = "Cut: " + node.Name
+				}
+				return m, nil
+			}
+			if m.activePanel == editorPanel && m.editorMode == modeEdit {
+				m.editor.Cut()
+			}
+			return m, nil
+
+		case "ctrl+v":
+			if m.activePanel == treePanel {
+				if !m.fileClip.empty() {
+					m.pasteFile()
+				}
+				return m, nil
+			}
+			if m.activePanel == editorPanel && m.editorMode == modeEdit {
+				m.editor.Paste()
+			}
+			return m, nil
+
 		case "ctrl+s":
 			m.saveCurrentFile()
 			return m, nil
@@ -288,7 +330,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.activePanel == editorPanel && m.editorMode == modeEdit {
 		var cmd tea.Cmd
-		m.editor, cmd = m.editor.Update(msg)
+		m.editor.Model, cmd = m.editor.Model.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
@@ -343,24 +385,6 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.newFolderInput.SetValue("")
 		cmd := m.newFolderInput.Focus()
 		return m, cmd
-	case "ctrl+x":
-		node := m.tree.selectedNode()
-		if node != nil && !node.IsDir {
-			m.fileClip = fileClipboard{path: node.Path, op: clipCut}
-			m.tree.cutPath = node.Path
-			m.errMsg = "Cut: " + node.Name
-		}
-	case "ctrl+c":
-		node := m.tree.selectedNode()
-		if node != nil && !node.IsDir {
-			m.fileClip = fileClipboard{path: node.Path, op: clipCopy}
-			m.tree.cutPath = ""
-			m.errMsg = "Copied: " + node.Name
-		}
-	case "ctrl+v":
-		if !m.fileClip.empty() {
-			m.pasteFile()
-		}
 	default:
 		// Auto-switch to editor on printable input when a file is open
 		if m.currentFile != "" && msg.Type == tea.KeyRunes {
@@ -374,6 +398,7 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "esc" {
+		m.editor.ClearSelection()
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingSwitchFile
@@ -399,8 +424,7 @@ func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	var cmd tea.Cmd
-	m.editor, cmd = m.editor.Update(msg)
+	cmd := m.editor.HandleKey(msg)
 	return m, cmd
 }
 
