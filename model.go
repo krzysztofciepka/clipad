@@ -1177,7 +1177,11 @@ func (m model) View() string {
 			Height(m.editorHeight).
 			Render(vp.View())
 	} else if m.editorMode == modePreview {
-		rightView = previewStyle.
+		style := previewStyle
+		if m.activePanel == editorPanel {
+			style = previewFocusedStyle
+		}
+		rightView = style.
 			Width(m.editorWidth).
 			Height(m.editorHeight).
 			Render(m.preview.View())

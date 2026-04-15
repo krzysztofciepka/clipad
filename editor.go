@@ -7,6 +7,12 @@ import (
 
 var editorStyle = lipgloss.NewStyle().Padding(0, 1)
 
+var previewFocusedStyle = lipgloss.NewStyle().
+	Padding(0, 1).
+	BorderLeft(true).
+	BorderStyle(lipgloss.NormalBorder()).
+	BorderForeground(lipgloss.Color("117"))
+
 var lineNumberStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 func newSelectableEditor() SelectableEditor {
