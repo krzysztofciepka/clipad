@@ -85,11 +85,14 @@ func runGitSync(vault, remote string) tea.Cmd {
 					_, err = gitCmd(vault, "pull", "--rebase", "--allow-unrelated-histories", "origin", "HEAD")
 				}
 				if err != nil {
-					// Conflict — handle in Task 4
+					// Conflict: abort rebase, save remote versions as .sync-conflict files
 					return handleSyncConflict(vault)
 				}
 			}
-			pulled = true
+			afterPull, _ := gitCmd(vault, "rev-parse", "HEAD")
+			if afterPull != localHead {
+				pulled = true
+			}
 		}
 
 		// Stage all changes
@@ -118,11 +121,11 @@ func runGitSync(vault, remote string) tea.Cmd {
 }
 
 // syncConflictName returns "name.sync-conflict.ext" for "name.ext",
-// or ".sync-conflict.name" for files without an extension.
+// or "name.sync-conflict" for files without an extension.
 func syncConflictName(name string) string {
 	ext := filepath.Ext(name)
 	if ext == "" {
-		return ".sync-conflict." + name
+		return name + ".sync-conflict"
 	}
 	base := strings.TrimSuffix(name, ext)
 	return base + ".sync-conflict" + ext
@@ -138,14 +141,11 @@ func handleSyncConflict(vault string) gitSyncResultMsg {
 		return gitSyncResultMsg{err: fmt.Errorf("sync conflict: could not identify conflicting files")}
 	}
 
-	// Stash any staged/unstaged changes so merge can proceed cleanly
-	gitCmd(vault, "stash")
-
-	// Merge origin/HEAD into local, preferring local version on conflicts
-	gitCmd(vault, "merge", "origin/HEAD", "-X", "ours", "--no-edit")
-
-	// Restore local changes
-	gitCmd(vault, "stash", "pop")
+	// Merge remote into local, preferring local version on conflicts.
+	// This properly integrates remote history so we can push without --force.
+	if _, err := gitCmd(vault, "merge", "origin/HEAD", "-X", "ours", "--no-edit"); err != nil {
+		return gitSyncResultMsg{err: fmt.Errorf("sync conflict: merge failed")}
+	}
 
 	// Write remote versions of conflicting files as .sync-conflict copies
 	files := strings.Split(out, "\n")

@@ -570,6 +570,11 @@ func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Guard ctrl+q across all input modes for graceful sync shutdown
+	if msg.String() == "ctrl+q" && m.gitSyncRunning && !m.isDirty() {
+		m.gitSyncQuitting = true
+		return m, nil
+	}
 	switch m.inputMode {
 	case inputFilter:
 		return m.handleFilterInput(msg)

@@ -229,7 +229,7 @@ func TestSyncConflictName(t *testing.T) {
 	}{
 		{"notes.md", "notes.sync-conflict.md"},
 		{"image.png", "image.sync-conflict.png"},
-		{"Makefile", ".sync-conflict.Makefile"},
+		{"Makefile", "Makefile.sync-conflict"},
 		{"archive.tar.gz", "archive.tar.sync-conflict.gz"},
 	}
 	for _, tt := range tests {
