@@ -541,6 +541,29 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.editorMode == modePreview {
+		switch msg.String() {
+		case "esc":
+			m.activePanel = treePanel
+			return m, nil
+		case "enter", "right":
+			m.editorMode = modeEdit
+			cmd := m.editor.Focus()
+			return m, cmd
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.editorMode = modeEdit
+				m.editor.Focus()
+				cmd := m.editor.HandleKey(msg)
+				return m, cmd
+			}
+			var cmd tea.Cmd
+			m.preview, cmd = m.preview.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// Edit mode
 	if msg.String() == "esc" {
 		m.editor.ClearSelection()
 		if m.isDirty() {
@@ -551,7 +574,6 @@ func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.activePanel = treePanel
 		m.editor.Blur()
-		// Switch to preview mode so the note shows as read-only
 		if m.currentFile != "" {
 			content := m.editor.Value()
 			vp := viewport.New(m.editorWidth-2, m.editorHeight)
@@ -560,12 +582,6 @@ func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editorMode = modePreview
 		}
 		return m, nil
-	}
-
-	if m.editorMode == modePreview {
-		var cmd tea.Cmd
-		m.preview, cmd = m.preview.Update(msg)
-		return m, cmd
 	}
 
 	cmd := m.editor.HandleKey(msg)
