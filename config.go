@@ -4,12 +4,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
 
 type Config struct {
-	Vault string `toml:"vault"`
+	Vault     string     `toml:"vault"`
+	GitRemote string     `toml:"git_remote,omitempty"`
+	LastSync  *time.Time `toml:"last_sync,omitempty"`
+}
+
+// configTOML is the on-disk representation. go-toml v2 cannot round-trip
+// *time.Time (it marshals as a quoted string but then refuses to unmarshal
+// that string back into *time.Time), so we store LastSync as an RFC3339
+// string and convert at the boundary.
+type configTOML struct {
+	Vault     string `toml:"vault"`
+	GitRemote string `toml:"git_remote,omitempty"`
+	LastSync  string `toml:"last_sync,omitempty"`
 }
 
 func configPath() string {
@@ -22,23 +35,41 @@ func configPath() string {
 }
 
 func loadConfig() (Config, error) {
-	var cfg Config
+	var ct configTOML
 	data, err := os.ReadFile(configPath())
 	if err != nil {
-		return cfg, fmt.Errorf("reading config: %w", err)
+		return Config{}, fmt.Errorf("reading config: %w", err)
 	}
-	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return cfg, fmt.Errorf("parsing config: %w", err)
+	if err := toml.Unmarshal(data, &ct); err != nil {
+		return Config{}, fmt.Errorf("parsing config: %w", err)
+	}
+	cfg := Config{
+		Vault:     ct.Vault,
+		GitRemote: ct.GitRemote,
+	}
+	if ct.LastSync != "" {
+		t, err := time.Parse(time.RFC3339, ct.LastSync)
+		if err != nil {
+			return Config{}, fmt.Errorf("parsing last_sync: %w", err)
+		}
+		cfg.LastSync = &t
 	}
 	return cfg, nil
 }
 
 func saveConfig(cfg Config) error {
+	ct := configTOML{
+		Vault:     cfg.Vault,
+		GitRemote: cfg.GitRemote,
+	}
+	if cfg.LastSync != nil {
+		ct.LastSync = cfg.LastSync.Format(time.RFC3339)
+	}
 	path := configPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
-	data, err := toml.Marshal(cfg)
+	data, err := toml.Marshal(ct)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
