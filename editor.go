@@ -8,7 +8,7 @@ import (
 var editorStyle = lipgloss.NewStyle().Padding(0, 1)
 
 var previewFocusedStyle = lipgloss.NewStyle().
-	Padding(0, 1).
+	PaddingRight(1).
 	BorderLeft(true).
 	BorderStyle(lipgloss.NormalBorder()).
 	BorderForeground(lipgloss.Color("117"))

@@ -553,9 +553,9 @@ func (m model) handleEditorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		default:
 			if msg.Type == tea.KeyRunes {
 				m.editorMode = modeEdit
-				m.editor.Focus()
-				cmd := m.editor.HandleKey(msg)
-				return m, cmd
+				focusCmd := m.editor.Focus()
+				keyCmd := m.editor.HandleKey(msg)
+				return m, tea.Batch(focusCmd, keyCmd)
 			}
 			var cmd tea.Cmd
 			m.preview, cmd = m.preview.Update(msg)
