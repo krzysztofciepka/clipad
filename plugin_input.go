@@ -35,7 +35,7 @@ func (m model) handlePluginSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.inputMode = inputNone
 		m.pluginActive = nil
-	case "ctrl+q", "ctrl+c":
+	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
@@ -73,7 +73,7 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.inputMode = inputNone
 		m.pluginActive = nil
-	case "ctrl+q", "ctrl+c":
+	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
@@ -107,7 +107,7 @@ func (m model) handlePluginPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.inputMode = inputNone
 		m.pluginActive = nil
-	case "ctrl+q", "ctrl+c":
+	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit

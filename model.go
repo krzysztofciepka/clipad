@@ -93,6 +93,7 @@ type model struct {
 
 	errMsg string
 
+	fileClip      fileClipboard
 	autoSaveFlash bool
 
 	// Plugin system
@@ -225,7 +226,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+q", "ctrl+c":
+		case "ctrl+q":
 			if m.isDirty() {
 				m.inputMode = inputUnsavedGuard
 				m.pendingAction = pendingQuit
@@ -342,6 +343,24 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.newFolderInput.SetValue("")
 		cmd := m.newFolderInput.Focus()
 		return m, cmd
+	case "ctrl+x":
+		node := m.tree.selectedNode()
+		if node != nil && !node.IsDir {
+			m.fileClip = fileClipboard{path: node.Path, op: clipCut}
+			m.tree.cutPath = node.Path
+			m.errMsg = "Cut: " + node.Name
+		}
+	case "ctrl+c":
+		node := m.tree.selectedNode()
+		if node != nil && !node.IsDir {
+			m.fileClip = fileClipboard{path: node.Path, op: clipCopy}
+			m.tree.cutPath = ""
+			m.errMsg = "Copied: " + node.Name
+		}
+	case "ctrl+v":
+		if !m.fileClip.empty() {
+			m.pasteFile()
+		}
 	default:
 		// Auto-switch to editor on printable input when a file is open
 		if m.currentFile != "" && msg.Type == tea.KeyRunes {
@@ -537,7 +556,7 @@ func (m model) handleNewFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.inputMode = inputNone
 		return m, nil
-	case "ctrl+q", "ctrl+c":
+	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
@@ -576,7 +595,7 @@ func (m model) handleReplaceSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.inputMode = inputNone
 		m.editorMode = modeEdit
 		return m, nil
-	case "ctrl+q", "ctrl+c":
+	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
@@ -608,7 +627,7 @@ func (m model) handleReplaceWith(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.replaceSearchTerm = ""
 		m.errMsg = ""
 		return m, nil
-	case "ctrl+q", "ctrl+c":
+	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit
@@ -774,6 +793,49 @@ func noteNameFromContent(content string) string {
 }
 
 
+
+func (m *model) pasteFile() {
+	src := m.fileClip.path
+	if _, err := os.Stat(src); err != nil {
+		m.errMsg = "Source file not found"
+		m.fileClip = fileClipboard{}
+		m.tree.cutPath = ""
+		return
+	}
+
+	dir := m.vault
+	node := m.tree.selectedNode()
+	if node != nil {
+		if node.IsDir {
+			dir = node.Path
+		} else {
+			dir = filepath.Dir(node.Path)
+		}
+	}
+
+	dst := uniquePath(filepath.Join(dir, filepath.Base(src)))
+
+	if m.fileClip.op == clipCut {
+		if err := os.Rename(src, dst); err != nil {
+			m.errMsg = fmt.Sprintf("Move failed: %v", err)
+			return
+		}
+		if m.currentFile == src {
+			m.currentFile = dst
+			m.tree.currentFile = dst
+		}
+	} else {
+		if err := copyFile(src, dst); err != nil {
+			m.errMsg = fmt.Sprintf("Copy failed: %v", err)
+			return
+		}
+	}
+
+	m.fileClip = fileClipboard{}
+	m.tree.cutPath = ""
+	m.errMsg = ""
+	m.refreshTree()
+}
 
 func (m *model) refreshTree() {
 	root, err := buildTree(m.vault)

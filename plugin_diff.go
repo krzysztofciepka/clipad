@@ -40,7 +40,7 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pluginDiffOriginal = ""
 		m.pluginDiffResult = ""
 		return m, nil
-	case "ctrl+q", "ctrl+c":
+	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
 			m.pendingAction = pendingQuit

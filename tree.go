@@ -36,6 +36,7 @@ type TreePanel struct {
 	height      int
 	width       int
 	currentFile string
+	cutPath     string
 }
 
 func newTreePanel(root *TreeNode, width, height int) TreePanel {
@@ -163,6 +164,8 @@ func (tp TreePanel) View(focused bool) string {
 			icon = "  "
 			if item.Node.Path == tp.currentFile {
 				name = treeActiveFile.Render(item.Node.Name)
+			} else if item.Node.Path == tp.cutPath {
+				name = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).Render(item.Node.Name)
 			} else {
 				name = treeFileStyle.Render(item.Node.Name)
 			}
