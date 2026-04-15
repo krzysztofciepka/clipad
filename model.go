@@ -455,8 +455,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			if m.activePanel == treePanel {
 				m.activePanel = editorPanel
-				cmd := m.editor.Focus()
-				return m, cmd
+				if m.editorMode == modeEdit {
+					cmd := m.editor.Focus()
+					return m, cmd
+				}
+				return m, nil
 			}
 			m.activePanel = treePanel
 			m.editor.Blur()
