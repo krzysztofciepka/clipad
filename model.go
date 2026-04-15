@@ -1178,11 +1178,13 @@ func (m model) View() string {
 			Render(vp.View())
 	} else if m.editorMode == modePreview {
 		style := previewStyle
+		w := m.editorWidth
 		if m.activePanel == editorPanel {
 			style = previewFocusedStyle
+			w-- // border adds 1 column outside Width
 		}
 		rightView = style.
-			Width(m.editorWidth).
+			Width(w).
 			Height(m.editorHeight).
 			Render(m.preview.View())
 	} else {
