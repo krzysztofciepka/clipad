@@ -76,7 +76,7 @@ func runShortcutCmd(shortcut AIShortcut, content string, config map[string]strin
 	return func() tea.Msg {
 		systemPrompt := "You are a text processing assistant. Apply the following instruction to the provided text. Return ONLY the processed text, nothing else."
 		userMessage := fmt.Sprintf("Instruction: %s\n\nText:\n%s", shortcut.Prompt, content)
-		result, err := callOpenRouter(defaultOpenRouterURL, config["api_key"], config["model"], systemPrompt, userMessage)
+		result, err := callBlackbox(defaultBlackboxURL, config["api_key"], config["model"], systemPrompt, userMessage)
 		return shortcutResultMsg{result: result, err: err}
 	}
 }

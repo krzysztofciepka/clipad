@@ -8,7 +8,7 @@ Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss,
 
 - **File tree** with nested folders, expand/collapse, fuzzy search
 - **Markdown editor** with line numbers and preview rendering
-- **Plugin system** with OpenRouter integration for LLM-powered note transformation (rephrase, translate, redraft)
+- **Plugin system** with blackbox.ai integration for LLM-powered note transformation (rephrase, translate, redraft)
 - **Find & replace** with live highlighting and match count
 - **Side-by-side diff view** for reviewing plugin changes
 - **Adaptive layout** that scales to narrow terminals
@@ -79,17 +79,17 @@ On first run, you'll be prompted to set your vault path (the directory where you
 
 Plugins process your notes through external services. Press `Ctrl+Space` to open the plugin selector.
 
-### OpenRouter
+### Blackbox
 
-LLM-powered note transformation via [OpenRouter](https://openrouter.ai). Supports any model available on the platform.
+LLM-powered note transformation via [blackbox.ai](https://blackbox.ai). Supports any model available on the platform.
 
 On first use, you'll be prompted for:
-- **API Key** - your OpenRouter API key
-- **Model** - e.g. `openai/gpt-4o`, `anthropic/claude-sonnet-4`
+- **API Key** - your blackbox.ai API key
+- **Model** - e.g. `blackboxai/minimax/minimax-m2.5`
 
 After processing, a side-by-side diff shows the original and modified note. Press `y` to accept or `n` to reject.
 
-Plugin config is stored at `~/.config/clipad/plugins/openrouter.toml`.
+Plugin config is stored at `~/.config/clipad/plugins/blackbox.toml`.
 
 ### AI Shortcuts
 

@@ -68,7 +68,7 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.shortcutPending {
 				m.shortcutPending = false
 				shortcut := m.shortcuts[m.shortcutCursor]
-				cfg, _ := loadPluginConfig("openrouter")
+				cfg, _ := loadPluginConfig("blackbox")
 				content := m.editor.Value()
 				m.shortcutOnSelection = m.editor.selActive
 				if m.shortcutOnSelection {

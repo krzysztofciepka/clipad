@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-func TestOpenRouterPlugin_Name(t *testing.T) {
-	p := &OpenRouterPlugin{}
-	if p.Name() != "openrouter" {
-		t.Errorf("Name() = %q, want %q", p.Name(), "openrouter")
+func TestBlackboxPlugin_Name(t *testing.T) {
+	p := &BlackboxPlugin{}
+	if p.Name() != "blackbox" {
+		t.Errorf("Name() = %q, want %q", p.Name(), "blackbox")
 	}
 }
 
-func TestOpenRouterPlugin_ConfigFields(t *testing.T) {
-	p := &OpenRouterPlugin{}
+func TestBlackboxPlugin_ConfigFields(t *testing.T) {
+	p := &BlackboxPlugin{}
 	fields := p.ConfigFields()
 	if len(fields) != 2 {
 		t.Fatalf("ConfigFields() returned %d fields, want 2", len(fields))
@@ -28,7 +28,7 @@ func TestOpenRouterPlugin_ConfigFields(t *testing.T) {
 	}
 }
 
-func TestOpenRouterPlugin_Run_Success(t *testing.T) {
+func TestBlackboxPlugin_Run_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("method = %q, want POST", r.Method)
@@ -39,8 +39,8 @@ func TestOpenRouterPlugin_Run_Success(t *testing.T) {
 
 		var req map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&req)
-		if req["model"] != "openai/gpt-4o" {
-			t.Errorf("model = %v, want openai/gpt-4o", req["model"])
+		if req["model"] != "blackboxai/minimax/minimax-m2.5" {
+			t.Errorf("model = %v, want blackboxai/minimax/minimax-m2.5", req["model"])
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -52,8 +52,8 @@ func TestOpenRouterPlugin_Run_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := &OpenRouterPlugin{BaseURL: server.URL}
-	cfg := map[string]string{"api_key": "test-key", "model": "openai/gpt-4o"}
+	p := &BlackboxPlugin{BaseURL: server.URL}
+	cfg := map[string]string{"api_key": "test-key", "model": "blackboxai/minimax/minimax-m2.5"}
 	result, err := p.Run("Original content", "Translate to Polish", cfg)
 	if err != nil {
 		t.Fatalf("Run() error: %v", err)
@@ -63,22 +63,22 @@ func TestOpenRouterPlugin_Run_Success(t *testing.T) {
 	}
 }
 
-func TestOpenRouterPlugin_Run_Error(t *testing.T) {
+func TestBlackboxPlugin_Run_Error(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error": "invalid api key"}`))
 	}))
 	defer server.Close()
 
-	p := &OpenRouterPlugin{BaseURL: server.URL}
-	cfg := map[string]string{"api_key": "bad-key", "model": "openai/gpt-4o"}
+	p := &BlackboxPlugin{BaseURL: server.URL}
+	cfg := map[string]string{"api_key": "bad-key", "model": "blackboxai/minimax/minimax-m2.5"}
 	_, err := p.Run("content", "prompt", cfg)
 	if err == nil {
 		t.Error("expected error for 401 response, got nil")
 	}
 }
 
-func TestOpenRouterPlugin_Run_EmptyChoices(t *testing.T) {
+func TestBlackboxPlugin_Run_EmptyChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -87,7 +87,7 @@ func TestOpenRouterPlugin_Run_EmptyChoices(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := &OpenRouterPlugin{BaseURL: server.URL}
+	p := &BlackboxPlugin{BaseURL: server.URL}
 	cfg := map[string]string{"api_key": "key", "model": "m"}
 	_, err := p.Run("content", "prompt", cfg)
 	if err == nil {

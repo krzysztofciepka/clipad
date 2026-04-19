@@ -114,7 +114,7 @@ func main() {
 	}
 
 	plugins := []Plugin{
-		&OpenRouterPlugin{},
+		&BlackboxPlugin{},
 	}
 	m := newModel(cfg.Vault, plugins)
 

@@ -20,10 +20,10 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		shortcut := m.shortcuts[m.shortcutCursor]
-		cfg, err := loadPluginConfig("openrouter")
-		if err != nil || !pluginConfigComplete((&OpenRouterPlugin{}).ConfigFields(), cfg) {
+		cfg, err := loadPluginConfig("blackbox")
+		if err != nil || !pluginConfigComplete((&BlackboxPlugin{}).ConfigFields(), cfg) {
 			m.shortcutPending = true
-			m.pluginActive = &OpenRouterPlugin{}
+			m.pluginActive = &BlackboxPlugin{}
 			m.pluginConfigFields = m.pluginActive.ConfigFields()
 			m.pluginConfigIndex = 0
 			m.pluginConfigValues = make(map[string]string)

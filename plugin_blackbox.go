@@ -9,33 +9,33 @@ import (
 	"time"
 )
 
-const defaultOpenRouterURL = "https://openrouter.ai/api/v1/chat/completions"
+const defaultBlackboxURL = "https://api.blackbox.ai/v1/chat/completions"
 
-type OpenRouterPlugin struct {
+type BlackboxPlugin struct {
 	BaseURL string // override for testing; empty uses default
 }
 
-func (p *OpenRouterPlugin) Name() string       { return "openrouter" }
-func (p *OpenRouterPlugin) Description() string { return "LLM-powered note transformation via OpenRouter" }
+func (p *BlackboxPlugin) Name() string        { return "blackbox" }
+func (p *BlackboxPlugin) Description() string { return "LLM-powered note transformation via blackbox.ai" }
 
-func (p *OpenRouterPlugin) ConfigFields() []ConfigField {
+func (p *BlackboxPlugin) ConfigFields() []ConfigField {
 	return []ConfigField{
-		{Key: "api_key", Label: "API Key", Placeholder: "sk-or-...", Secret: true},
-		{Key: "model", Label: "Model", Placeholder: "openai/gpt-4o", Secret: false},
+		{Key: "api_key", Label: "API Key", Placeholder: "sk-...", Secret: true},
+		{Key: "model", Label: "Model", Placeholder: "blackboxai/minimax/minimax-m2.5", Secret: false},
 	}
 }
 
-func (p *OpenRouterPlugin) Run(content string, prompt string, config map[string]string) (string, error) {
+func (p *BlackboxPlugin) Run(content string, prompt string, config map[string]string) (string, error) {
 	url := p.BaseURL
 	if url == "" {
-		url = defaultOpenRouterURL
+		url = defaultBlackboxURL
 	}
 	systemPrompt := "You are a note editor. Apply the following transformation to the note provided by the user. Return only the transformed note content, no explanations."
 	userMessage := fmt.Sprintf("Instruction: %s\n\nNote:\n%s", prompt, content)
-	return callOpenRouter(url, config["api_key"], config["model"], systemPrompt, userMessage)
+	return callBlackbox(url, config["api_key"], config["model"], systemPrompt, userMessage)
 }
 
-func callOpenRouter(url, apiKey, model, systemPrompt, userMessage string) (string, error) {
+func callBlackbox(url, apiKey, model, systemPrompt, userMessage string) (string, error) {
 	reqBody := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{

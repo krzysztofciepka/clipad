@@ -127,7 +127,7 @@ type model struct {
 	shortcutEditing     int
 	shortcutTempName    string
 	shortcutOnSelection bool
-	shortcutPending     bool // true when shortcut awaits OpenRouter config completion
+	shortcutPending     bool // true when shortcut awaits Blackbox config completion
 	shortcutNameInput   textinput.Model
 	shortcutPromptInput textinput.Model
 

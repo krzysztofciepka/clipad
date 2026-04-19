@@ -6,8 +6,8 @@ import (
 
 func TestPluginConfigPath(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/test-xdg")
-	got := pluginConfigPath("openrouter")
-	want := "/tmp/test-xdg/clipad/plugins/openrouter.toml"
+	got := pluginConfigPath("blackbox")
+	want := "/tmp/test-xdg/clipad/plugins/blackbox.toml"
 	if got != want {
 		t.Errorf("pluginConfigPath() = %q, want %q", got, want)
 	}
