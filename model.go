@@ -533,6 +533,21 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if node != nil && !node.IsDir {
 			m.inputMode = inputConfirmDelete
 		}
+	case "ctrl+e":
+		node := m.tree.selectedNode()
+		if node != nil {
+			m.renameTarget = node.Path
+			m.renameIsDir = node.IsDir
+			prefill := node.Name
+			if !node.IsDir {
+				prefill = strings.TrimSuffix(node.Name, filepath.Ext(node.Name))
+			}
+			m.renameInput.SetValue(prefill)
+			m.renameInput.CursorEnd()
+			m.inputMode = inputRename
+			cmd := m.renameInput.Focus()
+			return m, cmd
+		}
 	case "ctrl+f":
 		m.inputMode = inputNewFolder
 		m.newFolderInput.SetValue("")
