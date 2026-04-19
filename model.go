@@ -1440,3 +1440,61 @@ func (m *model) updateLastSync() {
 	cfg.LastSync = &now
 	saveConfig(cfg)
 }
+
+func (m *model) doRename(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("name cannot contain path separators")
+	}
+
+	dir := filepath.Dir(m.renameTarget)
+	var target string
+	if m.renameIsDir {
+		target = filepath.Join(dir, name)
+	} else {
+		target = filepath.Join(dir, name+filepath.Ext(m.renameTarget))
+	}
+
+	if target == m.renameTarget {
+		return nil
+	}
+
+	if _, err := os.Stat(target); err == nil {
+		return fmt.Errorf("already exists: %s", filepath.Base(target))
+	}
+
+	if err := os.Rename(m.renameTarget, target); err != nil {
+		return fmt.Errorf("rename failed: %w", err)
+	}
+
+	if m.renameIsDir {
+		prefix := m.renameTarget + string(os.PathSeparator)
+		if strings.HasPrefix(m.currentFile, prefix) {
+			rest := strings.TrimPrefix(m.currentFile, prefix)
+			m.currentFile = filepath.Join(target, rest)
+			m.tree.currentFile = m.currentFile
+		}
+		if m.fileClip.path == m.renameTarget || strings.HasPrefix(m.fileClip.path, prefix) {
+			m.fileClip = fileClipboard{}
+		}
+		if m.tree.cutPath == m.renameTarget || strings.HasPrefix(m.tree.cutPath, prefix) {
+			m.tree.cutPath = ""
+		}
+	} else {
+		if m.currentFile == m.renameTarget {
+			m.currentFile = target
+			m.tree.currentFile = target
+		}
+		if m.fileClip.path == m.renameTarget {
+			m.fileClip = fileClipboard{}
+		}
+		if m.tree.cutPath == m.renameTarget {
+			m.tree.cutPath = ""
+		}
+	}
+
+	return nil
+}
