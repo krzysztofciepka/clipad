@@ -64,6 +64,7 @@ On first run, you'll be prompted to set your vault path (the directory where you
 | `Enter` | Open file in editor / toggle folder |
 | `Right` | Open file in editor |
 | `/` | Fuzzy filter |
+| `Ctrl+E` | Rename file or folder |
 | `Ctrl+D` | Delete file |
 | `Ctrl+F` | Create folder |
 
