@@ -91,6 +91,20 @@ After processing, a side-by-side diff shows the original and modified note. Pres
 
 Plugin config is stored at `~/.config/clipad/plugins/openrouter.toml`.
 
+### AI Shortcuts
+
+Quick text transformations powered by your configured LLM. Press `Ctrl+Space`, pick a shortcut, and the model rewrites or augments the current note. The diff view lets you accept or reject the change.
+
+Shortcuts live in `~/.config/clipad/ai_shortcuts.toml` as `[[shortcuts]]` blocks (`name` + `prompt`). On first run the file is seeded with a default library of 23 shortcuts; you can edit, delete, or add entries freely afterward — clipad never overwrites your file.
+
+The default library covers:
+
+- **Requirements** — `prd`, `userstory`, `acceptance`, `critique`
+- **Todos** — `todos`, `prioritize`, `breakdown`
+- **Tech notes** — `onboard`, `explain`
+- **Universal utilities** — `tighten`, `tldr`, `outline`, `questions`, `examples`, `diagram`, `glossary`, `risks`
+- **Formatting** — `bullets`, `steps`, `table`, `headers`, `fmtjson`, `markdown`
+
 ## Configuration
 
 | File | Purpose |
