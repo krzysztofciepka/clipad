@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 func TestSaveAndLoadShortcuts(t *testing.T) {
@@ -50,5 +52,32 @@ func TestShortcutsPath(t *testing.T) {
 	want := "/tmp/test-xdg/clipad/ai_shortcuts.toml"
 	if got != want {
 		t.Errorf("shortcutsPath() = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultShortcutsEmbeddedTOMLParses(t *testing.T) {
+	var cfg aiShortcutsConfig
+	if err := toml.Unmarshal(defaultShortcutsTOML, &cfg); err != nil {
+		t.Fatalf("embedded defaults failed to parse: %v", err)
+	}
+	if len(cfg.Shortcuts) != 23 {
+		t.Fatalf("embedded defaults: want 23 shortcuts, got %d", len(cfg.Shortcuts))
+	}
+
+	want := []string{
+		"prd",
+		"userstory", "acceptance", "critique",
+		"todos", "prioritize", "breakdown",
+		"onboard", "explain",
+		"tighten", "tldr", "outline", "questions", "examples", "diagram", "glossary", "risks",
+		"bullets", "steps", "table", "headers", "fmtjson", "markdown",
+	}
+	for i, n := range want {
+		if cfg.Shortcuts[i].Name != n {
+			t.Errorf("shortcut %d: want name %q, got %q", i, n, cfg.Shortcuts[i].Name)
+		}
+		if cfg.Shortcuts[i].Prompt == "" {
+			t.Errorf("shortcut %q: empty prompt", n)
+		}
 	}
 }

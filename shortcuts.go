@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	toml "github.com/pelletier/go-toml/v2"
 )
+
+//go:embed defaults/ai_shortcuts.toml
+var defaultShortcutsTOML []byte
 
 type AIShortcut struct {
 	Name   string `toml:"name"`
