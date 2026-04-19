@@ -138,10 +138,10 @@ Every prompt:
 > Convert the text into a markdown table when the content has parallel structure (multiple items sharing the same attributes). Choose columns from the attributes that appear repeatedly. Emit rows in source order. Right-align numeric columns. If the content does not lend itself to a table, return the text unchanged.
 
 **`headers`**
-> Add markdown headers (`##`, `###`) to organize the text by topic. Do not rewrite paragraphs; only insert section headers and small whitespace fixes. Use sentence case. Choose header levels that reflect logical hierarchy. Do not add a top-level `#` title unless the text clearly lacks one.
+> Add markdown headers (## and ###) to organize the text by topic. Do not rewrite paragraphs; only insert section headers and small whitespace fixes. Use sentence case. Choose header levels that reflect logical hierarchy. Do not add a top-level # title unless the text clearly lacks one.
 
 **`fmtjson`**
-> Pretty-print every JSON object or array in the text with 2-space indentation and sorted keys where the source order is not meaningful. Preserve everything else verbatim. If a fenced code block contains JSON but lacks the `json` language tag, add it. If a JSON-looking blob is loose in the text, wrap it in a ```json fenced block.
+> Pretty-print every JSON object or array in the text with 2-space indentation and sorted keys where the source order is not meaningful. Preserve everything else verbatim. If a fenced code block contains JSON but lacks the json language tag, add it. If a JSON-looking blob is loose in the text, wrap it in a fenced code block tagged json.
 
 **`markdown`**
 > Clean up the markdown formatting of the text without changing any content: fix list indentation, normalize bullet and number markers, fix heading levels, close unclosed code fences, escape stray characters, fix broken link syntax, collapse consecutive blank lines. Do not rewrite, summarize, or remove anything.
