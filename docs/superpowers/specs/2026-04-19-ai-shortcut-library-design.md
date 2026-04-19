@@ -115,7 +115,7 @@ Every prompt:
 > Extract every open question, uncertainty, "TBD", or follow-up implied by the text. Output as a markdown bullet list under "## Open questions". For each, add a short " — <context>" pointing to where it came from. Include both explicit questions and ones clearly implied by gaps in the text.
 
 **`examples`** *(additive)*
-> Find abstract or generic claims in the text and add concrete examples that illustrate them. Insert each example inline, immediately after the claim it illustrates, prefixed with "Example:" on its own line. Keep all original wording. Do not invent facts about the user's specific system; if you cannot ground an example in the source, use a generic but realistic scenario.
+> Find abstract or generic claims in the text and add concrete examples that illustrate them. Insert each example inline, immediately after the claim it illustrates, prefixed with "Example:" on its own line. Keep all original wording. Do not invent facts about the system being described; if you cannot ground an example in the source, use a generic but realistic scenario.
 
 **`diagram`** *(additive)*
 > Identify parts of the text that would be clearer with a diagram (sequence of steps, state machine, component relationships, data flow). For each, insert a Mermaid code block at the appropriate spot in the text, choosing the right diagram type (flowchart, sequenceDiagram, stateDiagram, classDiagram). Keep the surrounding prose intact. If nothing in the text benefits from a diagram, return the text unchanged.
