@@ -69,6 +69,71 @@ func TestShortcutsPath(t *testing.T) {
 	}
 }
 
+func TestLoadShortcuts_DoesNotOverwriteExisting(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	dir := filepath.Join(tmpDir, "clipad")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	custom := []byte("[[shortcuts]]\nname = 'mine'\nprompt = 'do my thing'\n")
+	path := filepath.Join(dir, "ai_shortcuts.toml")
+	if err := os.WriteFile(path, custom, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := loadShortcuts()
+	if err != nil {
+		t.Fatalf("loadShortcuts() error: %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("want 1 shortcut, got %d", len(loaded))
+	}
+	if loaded[0].Name != "mine" {
+		t.Errorf("want name %q, got %q", "mine", loaded[0].Name)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(custom) {
+		t.Errorf("file was overwritten:\nwant: %q\ngot:  %q", custom, got)
+	}
+}
+
+func TestLoadShortcuts_KeepsExplicitlyEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	dir := filepath.Join(tmpDir, "clipad")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	empty := []byte("# user has no shortcuts\n")
+	path := filepath.Join(dir, "ai_shortcuts.toml")
+	if err := os.WriteFile(path, empty, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := loadShortcuts()
+	if err != nil {
+		t.Fatalf("loadShortcuts() error: %v", err)
+	}
+	if len(loaded) != 0 {
+		t.Errorf("want 0 shortcuts (file present, empty intent), got %d", len(loaded))
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(empty) {
+		t.Errorf("file was overwritten with defaults:\nwant: %q\ngot:  %q", empty, got)
+	}
+}
+
 func TestDefaultShortcutsEmbeddedTOMLParses(t *testing.T) {
 	var cfg aiShortcutsConfig
 	if err := toml.Unmarshal(defaultShortcutsTOML, &cfg); err != nil {
