@@ -649,6 +649,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleShortcutDeleteConfirm(msg)
 	case inputGitRemote:
 		return m.handleGitRemoteInput(msg)
+	case inputRename:
+		return m.handleRename(msg)
 	}
 	return m, nil
 }
@@ -789,6 +791,40 @@ func (m model) handleNewFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.newFolderInput, cmd = m.newFolderInput.Update(msg)
+	return m, cmd
+}
+
+func (m model) handleRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		name := strings.TrimSpace(m.renameInput.Value())
+		if name == "" {
+			return m, nil
+		}
+		if err := m.doRename(name); err != nil {
+			m.errMsg = err.Error()
+			if strings.HasPrefix(err.Error(), "rename failed") {
+				m.inputMode = inputNone
+			}
+			return m, nil
+		}
+		m.refreshTree()
+		m.inputMode = inputNone
+		m.errMsg = ""
+		return m, nil
+	case "esc":
+		m.inputMode = inputNone
+		return m, nil
+	case "ctrl+q":
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.renameInput, cmd = m.renameInput.Update(msg)
 	return m, cmd
 }
 
@@ -1280,6 +1316,9 @@ func (m model) View() string {
 	} else if m.inputMode == inputNewFolder {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"New folder: " + m.newFolderInput.View())
+	} else if m.inputMode == inputRename {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Rename: " + m.renameInput.View())
 	} else if m.inputMode == inputReplaceSearch {
 		term := m.replaceSearchInput.Value()
 		countInfo := ""
