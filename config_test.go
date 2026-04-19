@@ -81,6 +81,42 @@ func TestSaveAndLoadConfig_GitSync(t *testing.T) {
 	}
 }
 
+func TestSaveAndLoadConfig_AIShortcutProvider(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	cfg := Config{Vault: "/tmp/my-vault", AIShortcutProvider: "openrouter"}
+	if err := saveConfig(cfg); err != nil {
+		t.Fatalf("saveConfig() error: %v", err)
+	}
+
+	loaded, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.AIShortcutProvider != "openrouter" {
+		t.Errorf("loaded.AIShortcutProvider = %q, want %q", loaded.AIShortcutProvider, "openrouter")
+	}
+}
+
+func TestLoadConfig_AIShortcutProviderDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	cfg := Config{Vault: "/tmp/my-vault"}
+	if err := saveConfig(cfg); err != nil {
+		t.Fatalf("saveConfig() error: %v", err)
+	}
+
+	loaded, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.AIShortcutProvider != "blackbox" {
+		t.Errorf("loaded.AIShortcutProvider = %q, want default %q", loaded.AIShortcutProvider, "blackbox")
+	}
+}
+
 func TestSaveAndLoadConfig_GitSyncEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)

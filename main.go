@@ -115,8 +115,9 @@ func main() {
 
 	plugins := []Plugin{
 		&BlackboxPlugin{},
+		&OpenRouterPlugin{},
 	}
-	m := newModel(cfg.Vault, plugins)
+	m := newModel(cfg.Vault, plugins, cfg.AIShortcutProvider)
 
 	// Create welcome note if vault is empty (after tree was already built in newModel)
 	if m.treeRoot != nil && len(collectFiles(m.treeRoot)) == 0 {

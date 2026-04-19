@@ -68,7 +68,8 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.shortcutPending {
 				m.shortcutPending = false
 				shortcut := m.shortcuts[m.shortcutCursor]
-				cfg, _ := loadPluginConfig("blackbox")
+				provider := m.pluginActive.Name()
+				cfg, _ := loadPluginConfig(provider)
 				content := m.editor.Value()
 				m.shortcutOnSelection = m.editor.selActive
 				if m.shortcutOnSelection {
@@ -77,7 +78,7 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.pluginDiffOriginal = content
 				m.pluginProcessing = true
 				m.inputMode = inputNone
-				return m, runShortcutCmd(shortcut, content, cfg)
+				return m, runShortcutCmd(shortcut, content, provider, cfg)
 			}
 			m.inputMode = inputPluginPrompt
 			m.pluginPromptInput.SetValue("")

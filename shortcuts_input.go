@@ -20,11 +20,20 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		shortcut := m.shortcuts[m.shortcutCursor]
-		cfg, err := loadPluginConfig("blackbox")
-		if err != nil || !pluginConfigComplete((&BlackboxPlugin{}).ConfigFields(), cfg) {
+		provider := m.activeShortcutProvider
+		if provider == "" {
+			provider = defaultAIShortcutProvider
+		}
+		plugin := pluginByName(m.plugins, provider)
+		if plugin == nil {
+			m.errMsg = "Unknown AI shortcut provider: " + provider
+			return m, nil
+		}
+		cfg, err := loadPluginConfig(provider)
+		if err != nil || !pluginConfigComplete(plugin.ConfigFields(), cfg) {
 			m.shortcutPending = true
-			m.pluginActive = &BlackboxPlugin{}
-			m.pluginConfigFields = m.pluginActive.ConfigFields()
+			m.pluginActive = plugin
+			m.pluginConfigFields = plugin.ConfigFields()
 			m.pluginConfigIndex = 0
 			m.pluginConfigValues = make(map[string]string)
 			m.inputMode = inputPluginConfig
@@ -39,7 +48,23 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pluginDiffOriginal = content
 		m.pluginProcessing = true
 		m.inputMode = inputNone
-		return m, runShortcutCmd(shortcut, content, cfg)
+		return m, runShortcutCmd(shortcut, content, provider, cfg)
+	case "p":
+		if len(m.plugins) <= 1 {
+			return m, nil
+		}
+		allNames := make([]string, 0, len(m.plugins))
+		for _, p := range m.plugins {
+			allNames = append(allNames, p.Name())
+		}
+		next := cycleShortcutProvider(m.activeShortcutProvider, allNames)
+		if next != m.activeShortcutProvider {
+			m.activeShortcutProvider = next
+			if cfg, err := loadConfig(); err == nil {
+				cfg.AIShortcutProvider = next
+				_ = saveConfig(cfg)
+			}
+		}
 	case "e":
 		if len(m.shortcuts) > 0 && m.shortcutCursor < len(m.shortcuts) {
 			m.shortcutEditing = m.shortcutCursor

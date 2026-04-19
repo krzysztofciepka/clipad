@@ -23,7 +23,7 @@ var (
 		PaddingLeft(2)
 )
 
-func shortcutSelectorView(shortcuts []AIShortcut, cursor int, width, height int) string {
+func shortcutSelectorView(shortcuts []AIShortcut, cursor int, provider string, width, height int) string {
 	if len(shortcuts) == 0 {
 		content := shortcutEmptyStyle.Render("No shortcuts. Press Ctrl+L to create one.")
 		return lipgloss.NewStyle().
@@ -49,8 +49,9 @@ func shortcutSelectorView(shortcuts []AIShortcut, cursor int, width, height int)
 		items += name
 	}
 
+	providerLine := shortcutHintStyle.Render("Provider: " + provider + "  (p:cycle)")
 	hint := shortcutHintStyle.Render("Enter:run  e:edit  d:delete  Esc:close")
-	content := items + "\n" + hint
+	content := items + "\n" + providerLine + "\n" + hint
 
 	return lipgloss.NewStyle().
 		Width(width).

@@ -8,7 +8,7 @@ Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss,
 
 - **File tree** with nested folders, expand/collapse, fuzzy search
 - **Markdown editor** with line numbers and preview rendering
-- **Plugin system** with blackbox.ai integration for LLM-powered note transformation (rephrase, translate, redraft)
+- **Plugin system** with blackbox.ai and OpenRouter integrations for LLM-powered note transformation (rephrase, translate, redraft)
 - **Find & replace** with live highlighting and match count
 - **Side-by-side diff view** for reviewing plugin changes
 - **Adaptive layout** that scales to narrow terminals
@@ -91,11 +91,23 @@ After processing, a side-by-side diff shows the original and modified note. Pres
 
 Plugin config is stored at `~/.config/clipad/plugins/blackbox.toml`.
 
+### OpenRouter
+
+LLM-powered note transformation via [OpenRouter](https://openrouter.ai). Supports any model available on the platform.
+
+On first use, you'll be prompted for:
+- **API Key** - your OpenRouter API key
+- **Model** - e.g. `openai/gpt-4o`, `anthropic/claude-sonnet-4`
+
+Plugin config is stored at `~/.config/clipad/plugins/openrouter.toml`.
+
 ### AI Shortcuts
 
 Quick text transformations powered by your configured LLM. Press `Ctrl+Space`, pick a shortcut, and the model rewrites or augments the current note. The diff view lets you accept or reject the change.
 
 Shortcuts live in `~/.config/clipad/ai_shortcuts.toml` as `[[shortcuts]]` blocks (`name` + `prompt`). On first run the file is seeded with a default library of 23 shortcuts; you can edit, delete, or add entries freely afterward — clipad never overwrites your file.
+
+**Switching providers.** Inside the shortcut picker, press `p` to cycle the active AI provider (Blackbox ⇄ OpenRouter). The current provider is shown in the picker hint line and persisted to `~/.config/clipad/config.toml` as `ai_shortcut_provider`. If you select a provider that has not been configured yet, the next shortcut run will trigger its setup wizard.
 
 The default library covers:
 

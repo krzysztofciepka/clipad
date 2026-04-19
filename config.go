@@ -10,19 +10,23 @@ import (
 )
 
 type Config struct {
-	Vault     string     `toml:"vault"`
-	GitRemote string     `toml:"git_remote,omitempty"`
-	LastSync  *time.Time `toml:"last_sync,omitempty"`
+	Vault              string     `toml:"vault"`
+	GitRemote          string     `toml:"git_remote,omitempty"`
+	LastSync           *time.Time `toml:"last_sync,omitempty"`
+	AIShortcutProvider string     `toml:"ai_shortcut_provider,omitempty"`
 }
+
+const defaultAIShortcutProvider = "blackbox"
 
 // configTOML is the on-disk representation. go-toml v2 cannot round-trip
 // *time.Time (it marshals as a quoted string but then refuses to unmarshal
 // that string back into *time.Time), so we store LastSync as an RFC3339
 // string and convert at the boundary.
 type configTOML struct {
-	Vault     string `toml:"vault"`
-	GitRemote string `toml:"git_remote,omitempty"`
-	LastSync  string `toml:"last_sync,omitempty"`
+	Vault              string `toml:"vault"`
+	GitRemote          string `toml:"git_remote,omitempty"`
+	LastSync           string `toml:"last_sync,omitempty"`
+	AIShortcutProvider string `toml:"ai_shortcut_provider,omitempty"`
 }
 
 func configPath() string {
@@ -44,8 +48,12 @@ func loadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("parsing config: %w", err)
 	}
 	cfg := Config{
-		Vault:     ct.Vault,
-		GitRemote: ct.GitRemote,
+		Vault:              ct.Vault,
+		GitRemote:          ct.GitRemote,
+		AIShortcutProvider: ct.AIShortcutProvider,
+	}
+	if cfg.AIShortcutProvider == "" {
+		cfg.AIShortcutProvider = defaultAIShortcutProvider
 	}
 	if ct.LastSync != "" {
 		t, err := time.Parse(time.RFC3339, ct.LastSync)
@@ -59,8 +67,9 @@ func loadConfig() (Config, error) {
 
 func saveConfig(cfg Config) error {
 	ct := configTOML{
-		Vault:     cfg.Vault,
-		GitRemote: cfg.GitRemote,
+		Vault:              cfg.Vault,
+		GitRemote:          cfg.GitRemote,
+		AIShortcutProvider: cfg.AIShortcutProvider,
 	}
 	if cfg.LastSync != nil {
 		ct.LastSync = cfg.LastSync.Format(time.RFC3339)

@@ -122,14 +122,15 @@ type model struct {
 	pluginProcessing   bool
 
 	// AI shortcuts
-	shortcuts           []AIShortcut
-	shortcutCursor      int
-	shortcutEditing     int
-	shortcutTempName    string
-	shortcutOnSelection bool
-	shortcutPending     bool // true when shortcut awaits Blackbox config completion
-	shortcutNameInput   textinput.Model
-	shortcutPromptInput textinput.Model
+	shortcuts              []AIShortcut
+	shortcutCursor         int
+	shortcutEditing        int
+	shortcutTempName       string
+	shortcutOnSelection    bool
+	shortcutPending        bool // true when shortcut awaits provider config completion
+	shortcutNameInput      textinput.Model
+	shortcutPromptInput    textinput.Model
+	activeShortcutProvider string // which AI provider runs shortcuts; cycled with 'p'
 
 	// Git sync
 	gitSyncRunning  bool
@@ -139,7 +140,7 @@ type model struct {
 	gitRemoteInput  textinput.Model
 }
 
-func newModel(vault string, plugins []Plugin) model {
+func newModel(vault string, plugins []Plugin, activeShortcutProvider string) model {
 	fi := textinput.New()
 	fi.Placeholder = "filter..."
 	fi.CharLimit = 256
@@ -177,21 +178,22 @@ func newModel(vault string, plugins []Plugin) model {
 	gr.CharLimit = 512
 
 	m := model{
-		vault:              vault,
-		activePanel:        treePanel,
-		editorMode:         modeEdit,
-		editor:             newSelectableEditor(),
-		filterInput:        fi,
-		newFolderInput:     nf,
-		renameInput:        rn,
-		replaceSearchInput: rs,
-		replaceWithInput:   rw,
-		plugins:           plugins,
-		pluginPromptInput: pi,
-		shortcutNameInput:   sn,
-		shortcutPromptInput: sp,
-		shortcutEditing:     -1,
-		gitRemoteInput:      gr,
+		vault:                  vault,
+		activePanel:            treePanel,
+		editorMode:             modeEdit,
+		editor:                 newSelectableEditor(),
+		filterInput:            fi,
+		newFolderInput:         nf,
+		renameInput:            rn,
+		replaceSearchInput:     rs,
+		replaceWithInput:       rw,
+		plugins:                plugins,
+		pluginPromptInput:      pi,
+		shortcutNameInput:      sn,
+		shortcutPromptInput:    sp,
+		shortcutEditing:        -1,
+		gitRemoteInput:         gr,
+		activeShortcutProvider: activeShortcutProvider,
 	}
 
 	root, err := buildTree(vault)
@@ -1210,7 +1212,7 @@ func (m model) View() string {
 
 	var rightView string
 	if m.inputMode == inputShortcutSelect {
-		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.editorWidth, m.editorHeight)
+		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.activeShortcutProvider, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginDiff {
 		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
 	} else if m.currentFile == "" && m.newNoteDir == "" {
