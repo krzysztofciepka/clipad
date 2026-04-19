@@ -5,7 +5,10 @@
 
 ## Summary
 
-Expand the user's local AI shortcut library from one entry (`prd`) to twenty-three entries by writing twenty-two new `[[shortcuts]]` blocks into `~/.config/clipad/ai_shortcuts.toml`. Shortcuts are tailored to the user's stated writing workflow: software requirements, todos, and tech notes ("how stuff works"), plus general polish utilities and pure-formatting helpers.
+Define a curated library of twenty-three AI shortcuts tailored to the user's writing workflow (software requirements, todos, tech notes, general polish, formatting), and ship that library two ways:
+
+1. **Local config write** — populate the user's existing `~/.config/clipad/ai_shortcuts.toml` with the full set right now.
+2. **Built-in defaults in clipad** — embed the same TOML in the clipad binary via `go:embed`, and have `loadShortcuts` seed the user's config file with these defaults on first run (when the file is missing). Subsequent users of clipad get the library out of the box, can edit it freely, and never have it overwritten.
 
 ## Background
 
@@ -25,13 +28,15 @@ Only one shortcut exists today: `prd`, which converts informal text into a profe
    - **Heavy transforms** that replace the note with a new structure.
    - **Additive helpers** that augment the note without touching the original wording.
    - **Pure formatters** that restructure layout without rewriting content.
-4. Install directly into `~/.config/clipad/ai_shortcuts.toml`, preserving the existing `prd` entry as the first shortcut.
+4. Install directly into the user's local `~/.config/clipad/ai_shortcuts.toml`, preserving the existing `prd` entry as the first shortcut.
+5. Ship the same library as the built-in default set in clipad, so any user who has not configured shortcuts gets the full library on first run.
 
 ## Non-goals
 
-- No code changes to clipad itself.
 - No new shortcut categories beyond the six in this spec (Requirements, Todos, Tech Notes, Universal Utilities, Formatting). Formats the user said they don't write (ADR, runbook, RFC, postmortem) are explicitly excluded.
 - No syncing, sharing, or export of the shortcut file.
+- No "restore defaults" command. Once a user has a config file (even an empty one), they own it. If they want defaults back they delete the file.
+- No first-run wizard step or interactive prompt for shortcuts. Seeding is silent.
 
 ## Design
 
@@ -148,19 +153,43 @@ Every prompt:
 
 ## Implementation
 
-The implementation is data-only: append twenty-two `[[shortcuts]]` blocks to `~/.config/clipad/ai_shortcuts.toml`, in the category order above (Requirements → Todos → Tech notes → Universal utilities → Formatting). The existing `prd` entry remains first.
+### Part 1 — Local config write (already done)
 
-After the write, the file should contain exactly twenty-three `[[shortcuts]]` blocks.
+Wrote a complete twenty-three-entry `~/.config/clipad/ai_shortcuts.toml` with the `prd` shortcut at index 0 followed by the twenty-two new entries in category order (Requirements → Todos → Tech notes → Universal utilities → Formatting). Verified by parsing with Python `tomllib` and by re-loading with the same Go TOML library clipad uses. The previous file is preserved as a timestamped backup.
 
-### TOML escaping
+### Part 2 — Built-in defaults in clipad
 
-Some prompt strings contain backticks for inline code (`` `##` ``, `` ```json ``). TOML literal strings (`'...'`) preserve content verbatim with no escaping, which is what the existing `prd` entry uses. Use literal strings for every new entry. The only character that cannot appear in a literal string is the single quote `'` — none of the prompts contain one, so this is safe.
+The same TOML content ships in the clipad binary as the embedded default set, and `loadShortcuts` is taught to seed the user's config file from those defaults the first time it is called against a missing file.
 
-### Verification
+**File layout in the repo:**
 
-1. After writing, the file parses as valid TOML (no syntax errors).
-2. Reading the file with clipad's `loadShortcuts` yields exactly twenty-three entries.
-3. The entry at index 0 is the existing `prd` shortcut, unchanged.
+- `defaults/ai_shortcuts.toml` — single source of truth for the default library; identical content to what was written to the user's config.
+- `shortcuts.go` — adds `import _ "embed"`, declares `//go:embed defaults/ai_shortcuts.toml` `var defaultShortcutsTOML []byte`, and modifies `loadShortcuts` per the semantics below.
+- `shortcuts_test.go` — adds tests for the new behavior; the existing `TestLoadShortcuts_Missing` test flips to assert the new seed-on-missing semantics.
+
+**`loadShortcuts` semantics:**
+
+| State of `~/.config/clipad/ai_shortcuts.toml` | Behavior |
+|---|---|
+| File does not exist | Seed: `MkdirAll` the parent dir, write `defaultShortcutsTOML` to the path, then parse and return the embedded bytes. |
+| File exists with valid TOML containing N shortcuts | Return those N shortcuts unchanged. Never overwrite. |
+| File exists but parses to zero shortcuts (empty file, comments only, or `shortcuts = []`) | Return zero shortcuts. Never reseed — the user has expressed an intent to have none. |
+| File exists with invalid TOML | Return a parse error, as today. Do not reseed (would mask the user's broken file). |
+
+The seed write is silent — no log line, no UI prompt. If `MkdirAll` or `WriteFile` fail, surface the error with `fmt.Errorf("seeding shortcuts: %w", err)` so the user can see why.
+
+**Test plan (table-driven would also work; flat tests are fine for clarity):**
+
+1. `TestDefaultShortcutsEmbeddedTOMLParses` — `toml.Unmarshal(defaultShortcutsTOML, &cfg)` succeeds, `len(cfg.Shortcuts) == 23`, names match the spec's order, every entry has a non-empty name and prompt.
+2. `TestLoadShortcuts_SeedsWhenMissing` (renames/replaces the existing `TestLoadShortcuts_Missing`) — point `XDG_CONFIG_HOME` at `t.TempDir()`, call `loadShortcuts`, assert it returns 23 entries and that the file now exists at the expected path with the embedded bytes.
+3. `TestLoadShortcuts_DoesNotOverwriteExisting` — pre-populate the temp config dir with a one-entry file, call `loadShortcuts`, assert the returned slice has that one entry and the file content is byte-for-byte unchanged.
+4. `TestLoadShortcuts_KeepsExplicitlyEmpty` — pre-populate the temp config dir with a comment-only file (zero shortcuts), call `loadShortcuts`, assert the returned slice has length 0 and the file content is unchanged.
+
+The existing `TestSaveAndLoadShortcuts` is unaffected because `saveShortcuts` runs before `loadShortcuts`, so the file always exists at load time.
+
+**README update:** add a one-paragraph entry under the Plugins section describing the AI shortcut library, where the file lives, that defaults seed on first run, and how to customize. List the 23 default names so users can scan what they get without opening the file.
+
+**Backwards compatibility:** any existing user with their own `ai_shortcuts.toml` is unaffected — the seed only runs when the file is missing. Users with no file (which previously meant "no shortcuts available") now get the full default library; this is a feature, not a regression, but worth flagging in the release notes.
 
 ## Risks and considerations
 
@@ -168,3 +197,5 @@ Some prompt strings contain backticks for inline code (`` `##` ``, `` ```json ``
 - **Picker length.** The plugin selector renders shortcuts as a flat list. Twenty-three entries is scrollable but not overwhelming; if it becomes unwieldy, a future iteration could add categorization to the picker (out of scope here).
 - **Overlap.** `acceptance` and `userstory` both produce requirement-shaped output but in different formats; `outline` and `tldr` both summarize but at different granularities. These overlaps are intentional — different shapes serve different stages of work.
 - **Additive vs. transform mismatch.** Running an additive shortcut twice will duplicate its added section. The diff/accept flow makes this visible before the user commits.
+- **Default seed surprise.** Existing clipad users who previously had no shortcut file will silently get a populated one on next launch. This is documented in the release notes and visible in the picker; the file is theirs to edit or delete.
+- **Defaults drift between repo and local config.** The user's local config and the embedded defaults are now two copies of the same content. Drift is intentional — once a user customizes, the embedded defaults stop applying to them. The repo's `defaults/ai_shortcuts.toml` is the authoritative version going forward; updates land there and ship via release.
