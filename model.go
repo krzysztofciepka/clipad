@@ -57,6 +57,7 @@ const (
 	inputShortcutPrompt
 	inputShortcutDeleteConfirm
 	inputGitRemote
+	inputRename
 )
 
 type model struct {
@@ -92,7 +93,10 @@ type model struct {
 	pendingAction     pendingActionType
 	pendingSwitchPath string
 
-	newFolderInput    textinput.Model
+	newFolderInput     textinput.Model
+	renameInput        textinput.Model
+	renameTarget       string
+	renameIsDir        bool
 	replaceSearchInput textinput.Model
 	replaceWithInput   textinput.Model
 	replaceSearchTerm  string
@@ -148,6 +152,10 @@ func newModel(vault string, plugins []Plugin) model {
 	nf.Placeholder = "folder name"
 	nf.CharLimit = 256
 
+	rn := textinput.New()
+	rn.Placeholder = "new name"
+	rn.CharLimit = 256
+
 	rs := textinput.New()
 	rs.Placeholder = "search text"
 	rs.CharLimit = 256
@@ -175,6 +183,7 @@ func newModel(vault string, plugins []Plugin) model {
 		editor:             newSelectableEditor(),
 		filterInput:        fi,
 		newFolderInput:     nf,
+		renameInput:        rn,
 		replaceSearchInput: rs,
 		replaceWithInput:   rw,
 		plugins:           plugins,
