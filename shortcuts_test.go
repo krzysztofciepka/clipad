@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -33,16 +35,28 @@ func TestSaveAndLoadShortcuts(t *testing.T) {
 	}
 }
 
-func TestLoadShortcuts_Missing(t *testing.T) {
+func TestLoadShortcuts_SeedsWhenMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	loaded, err := loadShortcuts()
 	if err != nil {
-		t.Fatalf("loadShortcuts() should not error for missing file: %v", err)
+		t.Fatalf("loadShortcuts() error: %v", err)
 	}
-	if len(loaded) != 0 {
-		t.Errorf("expected empty slice, got %d shortcuts", len(loaded))
+	if len(loaded) != 23 {
+		t.Fatalf("expected 23 seeded shortcuts, got %d", len(loaded))
+	}
+	if loaded[0].Name != "prd" {
+		t.Errorf("first seeded shortcut: want %q, got %q", "prd", loaded[0].Name)
+	}
+
+	path := filepath.Join(tmpDir, "clipad", "ai_shortcuts.toml")
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("expected seeded file at %s: %v", path, err)
+	}
+	if string(got) != string(defaultShortcutsTOML) {
+		t.Errorf("seeded file content does not match embedded defaults")
 	}
 }
 

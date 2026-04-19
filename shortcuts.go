@@ -37,12 +37,20 @@ func shortcutsPath() string {
 }
 
 func loadShortcuts() ([]AIShortcut, error) {
-	data, err := os.ReadFile(shortcutsPath())
+	path := shortcutsPath()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return nil, fmt.Errorf("creating shortcuts dir: %w", err)
+			}
+			if err := os.WriteFile(path, defaultShortcutsTOML, 0o644); err != nil {
+				return nil, fmt.Errorf("seeding shortcuts: %w", err)
+			}
+			data = defaultShortcutsTOML
+		} else {
+			return nil, fmt.Errorf("reading shortcuts: %w", err)
 		}
-		return nil, fmt.Errorf("reading shortcuts: %w", err)
 	}
 	var cfg aiShortcutsConfig
 	if err := toml.Unmarshal(data, &cfg); err != nil {
