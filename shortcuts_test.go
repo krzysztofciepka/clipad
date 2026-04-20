@@ -161,5 +161,8 @@ func TestDefaultShortcutsEmbeddedTOMLParses(t *testing.T) {
 		if cfg.Shortcuts[i].Prompt == "" {
 			t.Errorf("shortcut %q: empty prompt", n)
 		}
+		if cfg.Shortcuts[i].Description == "" {
+			t.Errorf("shortcut %q: empty description", n)
+		}
 	}
 }

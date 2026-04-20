@@ -1,91 +1,114 @@
 [[shortcuts]]
 name = 'prd'
+description = 'Turn text into a PRD with TBDs for gaps'
 prompt = 'Turn the text into professional product requirements document. Add TBDs for things that are not clear but relevant in your view to have a complete and full spec'
 
 [[shortcuts]]
 name = 'userstory'
+description = 'Rewrite as user stories with acceptance criteria'
 prompt = 'Convert the text into one or more user stories in the format "As a <role>, I want <capability>, so that <benefit>." Below each story add 3-6 acceptance criteria as a bulleted list. Group related stories under a short heading. Rewrite freely for clarity.'
 
 [[shortcuts]]
 name = 'acceptance'
+description = 'Write Gherkin acceptance scenarios'
 prompt = 'Extract or write acceptance criteria for the feature described in the text. Output as Gherkin scenarios using "Scenario:", "Given", "When", "Then" (and "And" for additional steps). Cover the happy path plus important edge cases and error conditions. If the text is too vague to derive a scenario, list missing information under an "Open questions" heading at the end.'
 
 [[shortcuts]]
 name = 'critique'
+description = 'Review as a draft spec and flag issues'
 prompt = 'Review the text as if it were a draft spec or design doc. Output a structured critique with these sections: "Ambiguities" (statements that could be interpreted multiple ways), "Missing edge cases" (scenarios not addressed), "Hidden assumptions" (things presented as obvious that may not be), "Contradictions" (parts that conflict with each other). Quote the specific sentence under each finding. If a section has no findings, omit it.'
 
 [[shortcuts]]
 name = 'todos'
+description = 'Extract actionable items as a checkbox list'
 prompt = 'Extract every actionable item from the text and output as a markdown checkbox list (- [ ] item). Phrase each item as a concrete verb-led action. Group related items under short bold headings if there are obvious clusters. Drop items that are observations, decisions already made, or aspirations without an action — only true todos.'
 
 [[shortcuts]]
 name = 'prioritize'
+description = 'Re-rank todos into Now / Next / Later'
 prompt = 'Take the todo items in the text and re-rank them by impact and effort. Output three sections: "## Now" (high-impact, ready to start), "## Next" (important but blocked or lower urgency), "## Later" (nice-to-have or low-impact). Within each section use a markdown checkbox list. After each item, append a short " — <reason>" explaining the placement. Drop duplicates and merge near-duplicates.'
 
 [[shortcuts]]
 name = 'breakdown'
+description = 'Decompose a goal into nested subtasks'
 prompt = 'Take the high-level task or goal in the text and decompose it into concrete subtasks. Output as a hierarchical markdown checkbox list, with sub-items nested under their parent. Each leaf should be small enough to complete in one sitting. Add a short "## Open questions" section at the end for anything that needs to be resolved before starting.'
 
 [[shortcuts]]
 name = 'onboard'
+description = 'Rewrite as an onboarding doc for new engineers'
 prompt = 'Restructure the text as an onboarding document for an engineer who has never seen this system. Use these sections in order: "## What it is" (one paragraph), "## Why it exists" (problem it solves), "## Mental model" (the core concepts and how they relate), "## How to use it" (the typical workflow), "## Where the code lives" (key files/modules if mentioned), "## Common gotchas" (pitfalls to avoid). Rewrite freely; assume the reader has solid general engineering background but zero context on this project.'
 
 [[shortcuts]]
 name = 'explain'
+description = 'Rewrite as a clear ground-up explainer'
 prompt = 'Restructure the text as a clean explainer of how the system works. Open with a one-paragraph summary. Then build up understanding from the ground up: introduce concepts before they are used, show the simple case before complications, and end with a section on edge cases or surprising behavior. Use short sections with descriptive headings. Add concrete examples inline. Rewrite freely for clarity.'
 
 [[shortcuts]]
 name = 'tighten'
+description = 'Cut filler; keep meaning; shorter'
 prompt = 'Tighten the text. Cut filler, hedging, redundancy, and throat-clearing. Keep all substantive points. Do not add new information, do not change the meaning, do not change the document structure. Aim for roughly 60-70% of the original length.'
 
 [[shortcuts]]
 name = 'tldr'
+description = 'Add a TL;DR at the top'
 prompt = 'Add a "## TL;DR" section at the very top of the document containing 1-3 sentences (or a short bullet list if the content is heterogeneous) that capture the key takeaway. Keep the rest of the document unchanged.'
 
 [[shortcuts]]
 name = 'outline'
+description = 'Produce a nested outline of topics'
 prompt = 'Produce a hierarchical outline of the text as a nested markdown bullet list. Each bullet should be a short noun phrase or sentence fragment naming a topic, not a summary. Mirror the logical structure even if the source is not well-organized.'
 
 [[shortcuts]]
 name = 'questions'
+description = 'List open questions and TBDs'
 prompt = 'Extract every open question, uncertainty, "TBD", or follow-up implied by the text. Output as a markdown bullet list under "## Open questions". For each, add a short " — <context>" pointing to where it came from. Include both explicit questions and ones clearly implied by gaps in the text.'
 
 [[shortcuts]]
 name = 'examples'
+description = 'Add concrete examples inline after claims'
 prompt = 'Find abstract or generic claims in the text and add concrete examples that illustrate them. Insert each example inline, immediately after the claim it illustrates, prefixed with "Example:" on its own line. Keep all original wording. Do not invent facts about the system being described; if you cannot ground an example in the source, use a generic but realistic scenario.'
 
 [[shortcuts]]
 name = 'diagram'
+description = 'Insert Mermaid diagrams where they help'
 prompt = 'Identify parts of the text that would be clearer with a diagram (sequence of steps, state machine, component relationships, data flow). For each, insert a Mermaid code block at the appropriate spot in the text, choosing the right diagram type (flowchart, sequenceDiagram, stateDiagram, classDiagram). Keep the surrounding prose intact. If nothing in the text benefits from a diagram, return the text unchanged.'
 
 [[shortcuts]]
 name = 'glossary'
+description = 'Add a glossary of domain terms at the end'
 prompt = 'Identify domain-specific terms, jargon, and acronyms used in the text. Add a "## Glossary" section at the end with each term as a bold entry followed by a one-sentence plain-language definition. Order alphabetically. Do not modify the original text.'
 
 [[shortcuts]]
 name = 'risks'
+description = 'List risks, gotchas, and failure modes'
 prompt = 'Extract risks, pitfalls, edge cases, failure modes, and gotchas from the text — both ones explicitly mentioned and ones a careful reader would infer. Output as a markdown bullet list under "## Risks & gotchas". For each, add a short note on what could trigger it and, if obvious, how to mitigate.'
 
 [[shortcuts]]
 name = 'bullets'
+description = 'Convert prose into a bullet list'
 prompt = 'Convert the text into a markdown bullet list. Split by topic or item — one bullet per discrete point. Do not rewrite content beyond minor cleanup needed to make each item read well as a standalone bullet. Preserve order. If the source already uses bullets, only fix formatting (indentation, marker consistency).'
 
 [[shortcuts]]
 name = 'steps'
+description = 'Convert into a numbered step list'
 prompt = 'Convert the text into a numbered markdown list of sequential steps (1., 2., 3., …). Use this when the content describes an ordered procedure. Each step starts with an imperative verb. Preserve order and original wording where possible; tighten only for clarity. If a step has substeps, nest them as a bullet sublist.'
 
 [[shortcuts]]
 name = 'table'
+description = 'Convert parallel structure into a table'
 prompt = 'Convert the text into a markdown table when the content has parallel structure (multiple items sharing the same attributes). Choose columns from the attributes that appear repeatedly. Emit rows in source order. Right-align numeric columns. If the content does not lend itself to a table, return the text unchanged.'
 
 [[shortcuts]]
 name = 'headers'
+description = 'Insert section headers by topic'
 prompt = 'Add markdown headers (## and ###) to organize the text by topic. Do not rewrite paragraphs; only insert section headers and small whitespace fixes. Use sentence case. Choose header levels that reflect logical hierarchy. Do not add a top-level # title unless the text clearly lacks one.'
 
 [[shortcuts]]
 name = 'fmtjson'
+description = 'Pretty-print JSON blocks in the text'
 prompt = 'Pretty-print every JSON object or array in the text with 2-space indentation and sorted keys where the source order is not meaningful. Preserve everything else verbatim. If a fenced code block contains JSON but lacks the json language tag, add it. If a JSON-looking blob is loose in the text, wrap it in a fenced code block tagged json.'
 
 [[shortcuts]]
 name = 'markdown'
+description = 'Clean up markdown formatting only'
 prompt = 'Clean up the markdown formatting of the text without changing any content: fix list indentation, normalize bullet and number markers, fix heading levels, close unclosed code fences, escape stray characters, fix broken link syntax, collapse consecutive blank lines. Do not rewrite, summarize, or remove anything.'
