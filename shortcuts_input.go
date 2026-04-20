@@ -98,6 +98,38 @@ func (m model) handleShortcutName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.shortcutTempName = name
+		m.inputMode = inputShortcutDescription
+		if m.shortcutEditing >= 0 {
+			m.shortcutDescriptionInput.SetValue(m.shortcuts[m.shortcutEditing].Description)
+		} else {
+			m.shortcutDescriptionInput.SetValue("")
+		}
+		cmd := m.shortcutDescriptionInput.Focus()
+		return m, cmd
+	case "esc":
+		m.inputMode = inputNone
+		m.shortcutEditing = -1
+	case "ctrl+q":
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.shortcutNameInput, cmd = m.shortcutNameInput.Update(msg)
+	return m, cmd
+}
+
+func (m model) handleShortcutDescription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		desc := m.shortcutDescriptionInput.Value()
+		if desc == "" {
+			return m, nil
+		}
+		m.shortcutTempDescription = desc
 		m.inputMode = inputShortcutPrompt
 		if m.shortcutEditing >= 0 {
 			m.shortcutPromptInput.SetValue(m.shortcuts[m.shortcutEditing].Prompt)
@@ -118,7 +150,7 @@ func (m model) handleShortcutName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	var cmd tea.Cmd
-	m.shortcutNameInput, cmd = m.shortcutNameInput.Update(msg)
+	m.shortcutDescriptionInput, cmd = m.shortcutDescriptionInput.Update(msg)
 	return m, cmd
 }
 
@@ -129,7 +161,11 @@ func (m model) handleShortcutPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if prompt == "" {
 			return m, nil
 		}
-		shortcut := AIShortcut{Name: m.shortcutTempName, Prompt: prompt}
+		shortcut := AIShortcut{
+			Name:        m.shortcutTempName,
+			Description: m.shortcutTempDescription,
+			Prompt:      prompt,
+		}
 		if m.shortcutEditing >= 0 {
 			m.shortcuts[m.shortcutEditing] = shortcut
 		} else {

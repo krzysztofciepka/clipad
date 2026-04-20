@@ -54,10 +54,12 @@ const (
 	inputReplaceWith
 	inputShortcutSelect
 	inputShortcutName
+	inputShortcutDescription
 	inputShortcutPrompt
 	inputShortcutDeleteConfirm
 	inputGitRemote
 	inputRename
+	inputHelp
 )
 
 type model struct {
@@ -125,11 +127,13 @@ type model struct {
 	shortcuts              []AIShortcut
 	shortcutCursor         int
 	shortcutEditing        int
-	shortcutTempName       string
-	shortcutOnSelection    bool
-	shortcutPending        bool // true when shortcut awaits provider config completion
-	shortcutNameInput      textinput.Model
-	shortcutPromptInput    textinput.Model
+	shortcutTempName         string
+	shortcutTempDescription  string
+	shortcutOnSelection      bool
+	shortcutPending          bool // true when shortcut awaits provider config completion
+	shortcutNameInput        textinput.Model
+	shortcutDescriptionInput textinput.Model
+	shortcutPromptInput      textinput.Model
 	activeShortcutProvider string // which AI provider runs shortcuts; cycled with 'p'
 
 	// Git sync
@@ -169,6 +173,10 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider string) mod
 	sn.Placeholder = "shortcut name"
 	sn.CharLimit = 256
 
+	sd := textinput.New()
+	sd.Placeholder = "short description"
+	sd.CharLimit = 120
+
 	sp := textinput.New()
 	sp.Placeholder = "prompt template"
 	sp.CharLimit = 500
@@ -189,8 +197,9 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider string) mod
 		replaceWithInput:       rw,
 		plugins:                plugins,
 		pluginPromptInput:      pi,
-		shortcutNameInput:      sn,
-		shortcutPromptInput:    sp,
+		shortcutNameInput:        sn,
+		shortcutDescriptionInput: sd,
+		shortcutPromptInput:      sp,
 		shortcutEditing:        -1,
 		gitRemoteInput:         gr,
 		activeShortcutProvider: activeShortcutProvider,
@@ -463,6 +472,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "ctrl+?", "ctrl+/", "ctrl+_":
+			m.inputMode = inputHelp
+			return m, nil
+
 		case "tab":
 			if m.activePanel == treePanel {
 				m.activePanel = editorPanel
@@ -645,6 +658,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleShortcutSelect(msg)
 	case inputShortcutName:
 		return m.handleShortcutName(msg)
+	case inputShortcutDescription:
+		return m.handleShortcutDescription(msg)
 	case inputShortcutPrompt:
 		return m.handleShortcutPrompt(msg)
 	case inputShortcutDeleteConfirm:
@@ -653,6 +668,23 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleGitRemoteInput(msg)
 	case inputRename:
 		return m.handleRename(msg)
+	case inputHelp:
+		return m.handleHelp(msg)
+	}
+	return m, nil
+}
+
+func (m model) handleHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c", "ctrl+?", "ctrl+/", "ctrl+_", "q":
+		m.inputMode = inputNone
+	case "ctrl+q":
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
+		return m, tea.Quit
 	}
 	return m, nil
 }
@@ -1211,7 +1243,9 @@ func (m model) View() string {
 	}
 
 	var rightView string
-	if m.inputMode == inputShortcutSelect {
+	if m.inputMode == inputHelp {
+		rightView = helpView(m.editorWidth, m.editorHeight)
+	} else if m.inputMode == inputShortcutSelect {
 		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.activeShortcutProvider, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginDiff {
 		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
@@ -1336,6 +1370,9 @@ func (m model) View() string {
 	} else if m.inputMode == inputShortcutName {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Shortcut name: " + m.shortcutNameInput.View())
+	} else if m.inputMode == inputShortcutDescription {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Description: " + m.shortcutDescriptionInput.View())
 	} else if m.inputMode == inputShortcutPrompt {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Prompt: " + m.shortcutPromptInput.View())
