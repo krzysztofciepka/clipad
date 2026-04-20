@@ -13,8 +13,8 @@ func TestSaveAndLoadShortcuts(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	shortcuts := []AIShortcut{
-		{Name: "Fix grammar", Prompt: "Fix grammar errors"},
-		{Name: "Summarize", Prompt: "Summarize this text"},
+		{Name: "Fix grammar", Description: "Correct grammar errors", Prompt: "Fix grammar errors"},
+		{Name: "Summarize", Description: "Short summary", Prompt: "Summarize this text"},
 	}
 	if err := saveShortcuts(shortcuts); err != nil {
 		t.Fatalf("saveShortcuts() error: %v", err)
@@ -29,6 +29,9 @@ func TestSaveAndLoadShortcuts(t *testing.T) {
 	}
 	if loaded[0].Name != "Fix grammar" {
 		t.Errorf("first shortcut name = %q, want %q", loaded[0].Name, "Fix grammar")
+	}
+	if loaded[0].Description != "Correct grammar errors" {
+		t.Errorf("first shortcut description = %q, want %q", loaded[0].Description, "Correct grammar errors")
 	}
 	if loaded[1].Prompt != "Summarize this text" {
 		t.Errorf("second shortcut prompt = %q, want %q", loaded[1].Prompt, "Summarize this text")

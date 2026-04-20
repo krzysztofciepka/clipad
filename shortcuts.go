@@ -14,8 +14,9 @@ import (
 var defaultShortcutsTOML []byte
 
 type AIShortcut struct {
-	Name   string `toml:"name"`
-	Prompt string `toml:"prompt"`
+	Name        string `toml:"name"`
+	Description string `toml:"description"`
+	Prompt      string `toml:"prompt"`
 }
 
 type aiShortcutsConfig struct {
