@@ -45,27 +45,118 @@ func TestHitTestPanel(t *testing.T) {
 
 func TestMousePosToEditorCursor(t *testing.T) {
 	content := "hello\nworld\nfoo bar"
+	// wrapWidth big enough that no line wraps
 	tests := []struct {
-		name                                 string
-		viewOffset, localX, localY, numWidth int
-		wantLine, wantCol                    int
+		name                                                 string
+		visualYOffset, localX, localY, numWidth, wrapWidth   int
+		wantLine, wantCol                                    int
 	}{
-		{"first line first char", 0, 4, 0, 2, 0, 0},
-		{"first line middle", 0, 6, 0, 2, 0, 2},
-		{"past line length clamps", 0, 20, 0, 2, 0, 5},
-		{"second line", 0, 4, 1, 2, 1, 0},
-		{"viewOffset shifts", 1, 4, 0, 2, 1, 0},
-		{"past content clamps to last line", 0, 4, 99, 2, 2, 0},
-		{"click in line number column", 0, 2, 0, 2, 0, 0},
-		{"click in padding", 0, 0, 0, 2, 0, 0},
+		{"first line first char", 0, 4, 0, 2, 80, 0, 0},
+		{"first line middle", 0, 6, 0, 2, 80, 0, 2},
+		{"past line length clamps", 0, 20, 0, 2, 80, 0, 5},
+		{"second line", 0, 4, 1, 2, 80, 1, 0},
+		{"visualYOffset shifts", 1, 4, 0, 2, 80, 1, 0},
+		{"past content clamps to last line", 0, 4, 99, 2, 80, 2, 0},
+		{"click in line number column", 0, 2, 0, 2, 80, 0, 0},
+		{"click in padding", 0, 0, 0, 2, 80, 0, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			line, col := mousePosToEditorCursor(content, tt.viewOffset, tt.localX, tt.localY, tt.numWidth)
+			line, col := mousePosToEditorCursor(content, tt.visualYOffset, tt.localX, tt.localY, tt.numWidth, tt.wrapWidth)
 			if line != tt.wantLine || col != tt.wantCol {
 				t.Errorf("got (%d,%d), want (%d,%d)", line, col, tt.wantLine, tt.wantCol)
 			}
 		})
+	}
+}
+
+func TestMousePosToEditorCursor_Wrapping(t *testing.T) {
+	// Three lines. Each line is 25 chars. Wrap at 10 chars.
+	// Line 0: 25 chars → 3 visual rows (rows 0,1,2)
+	// Line 1: 25 chars → 3 visual rows (rows 3,4,5)
+	// Line 2: 5 chars  → 1 visual row  (row 6)
+	line0 := "aaaaaaaaaaaaaaaaaaaaaaaaa"
+	line1 := "bbbbbbbbbbbbbbbbbbbbbbbbb"
+	line2 := "ccccc"
+	content := line0 + "\n" + line1 + "\n" + line2
+
+	tests := []struct {
+		name                                                 string
+		visualYOffset, localX, localY, numWidth, wrapWidth   int
+		wantLine, wantCol                                    int
+	}{
+		{"click on visual row 0 → line 0 wrap 0", 0, 4, 0, 2, 10, 0, 0},
+		{"click on visual row 1 → line 0 wrap 1", 0, 4, 1, 2, 10, 0, 10},
+		{"click on visual row 2 → line 0 wrap 2", 0, 4, 2, 2, 10, 0, 20},
+		{"click on visual row 3 → line 1 wrap 0", 0, 4, 3, 2, 10, 1, 0},
+		{"click on visual row 5 → line 1 wrap 2", 0, 4, 5, 2, 10, 1, 20},
+		{"click on visual row 6 → line 2", 0, 4, 6, 2, 10, 2, 0},
+		{"scrolled: yOffset=2, localY=1 → visual row 3 → line 1", 2, 4, 1, 2, 10, 1, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			line, col := mousePosToEditorCursor(content, tt.visualYOffset, tt.localX, tt.localY, tt.numWidth, tt.wrapWidth)
+			if line != tt.wantLine || col != tt.wantCol {
+				t.Errorf("got (%d,%d), want (%d,%d)", line, col, tt.wantLine, tt.wantCol)
+			}
+		})
+	}
+}
+
+func TestWrapContent_NoWrappingWhenFits(t *testing.T) {
+	rows := wrapContent("hello\nworld", 20)
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(rows))
+	}
+	if rows[0].line != 0 || rows[0].startCol != 0 || rows[0].length != 5 {
+		t.Errorf("rows[0] = %+v", rows[0])
+	}
+	if rows[1].line != 1 || rows[1].startCol != 0 || rows[1].length != 5 {
+		t.Errorf("rows[1] = %+v", rows[1])
+	}
+}
+
+func TestWrapContent_WordWrap(t *testing.T) {
+	// "aaaa bbbb cccc dddd" wrapped at 10 cols. Greedy word wrap breaks at
+	// the last space inside the 10-rune window, so:
+	//   row 0: "aaaa bbbb " (10 runes, ends after the space at idx 9)
+	//   row 1: "cccc dddd" (9 runes)
+	rows := wrapContent("aaaa bbbb cccc dddd", 10)
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(rows))
+	}
+	if rows[0].startCol != 0 || rows[0].length != 10 {
+		t.Errorf("rows[0] = %+v, want startCol=0 length=10", rows[0])
+	}
+	if rows[1].startCol != 10 || rows[1].length != 9 {
+		t.Errorf("rows[1] = %+v, want startCol=10 length=9", rows[1])
+	}
+}
+
+func TestWrapContent_HardBreakLongWord(t *testing.T) {
+	// 25-char word with no spaces → char breaks at wrapWidth.
+	rows := wrapContent(strings.Repeat("a", 25), 10)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d, want 3", len(rows))
+	}
+	if rows[0].startCol != 0 || rows[0].length != 10 {
+		t.Errorf("rows[0] = %+v", rows[0])
+	}
+	if rows[1].startCol != 10 || rows[1].length != 10 {
+		t.Errorf("rows[1] = %+v", rows[1])
+	}
+	if rows[2].startCol != 20 || rows[2].length != 5 {
+		t.Errorf("rows[2] = %+v", rows[2])
+	}
+}
+
+func TestWrapContent_EmptyLinesKeptAsOneRow(t *testing.T) {
+	rows := wrapContent("a\n\nb", 10)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d, want 3", len(rows))
+	}
+	if rows[1].line != 1 || rows[1].length != 0 {
+		t.Errorf("rows[1] = %+v, want empty on line 1", rows[1])
 	}
 }
 

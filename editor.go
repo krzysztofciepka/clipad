@@ -38,5 +38,6 @@ func setEditorSize(e *SelectableEditor, width, height int) {
 }
 
 func editorCursorPos(e SelectableEditor) (line, col int) {
-	return e.Line(), e.LineInfo().ColumnOffset
+	info := e.LineInfo()
+	return e.Line(), info.StartColumn + info.ColumnOffset
 }

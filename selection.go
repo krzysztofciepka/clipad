@@ -17,13 +17,14 @@ var selectionStyle = lipgloss.NewStyle().
 
 type SelectableEditor struct {
 	textarea.Model
-	height        int
-	selActive     bool
-	selAnchorLine int
-	selAnchorCol  int
-	textClip      string
-	viewOffset    int
-	mouseDragging bool
+	height          int
+	selActive       bool
+	selAnchorLine   int
+	selAnchorCol    int
+	textClip        string
+	viewOffset      int
+	mouseDragging   bool
+	visualYOffset   int // mirrors textarea's internal viewport YOffset for click mapping
 }
 
 // --- Pure helper functions ---
@@ -144,8 +145,13 @@ func wordRightPos(content string, line, col int) (int, int) {
 
 // --- SelectableEditor methods ---
 
+// cursorCol returns the cursor's LOGICAL column within its line (rune index
+// from the start of the logical line). LineInfo().ColumnOffset alone is the
+// offset within the current wrap row, not the logical line, so we add
+// StartColumn back in.
 func (e *SelectableEditor) cursorCol() int {
-	return e.LineInfo().ColumnOffset
+	info := e.LineInfo()
+	return info.StartColumn + info.ColumnOffset
 }
 
 func (e *SelectableEditor) startSelectionIfNeeded() {
@@ -206,6 +212,7 @@ func (e *SelectableEditor) StartMouseDrag(line, col int) {
 	e.selAnchorCol = col
 	e.selActive = false
 	e.mouseDragging = true
+	e.syncVisualYOffset()
 }
 
 // UpdateMouseDrag moves the cursor during a drag. The first position that
@@ -221,6 +228,7 @@ func (e *SelectableEditor) UpdateMouseDrag(line, col int) {
 		e.selActive = false
 	}
 	e.adjustViewOffset()
+	e.syncVisualYOffset()
 }
 
 // EndMouseDrag finishes a drag. Clears mouseDragging. If the cursor is still
@@ -238,6 +246,7 @@ func (e *SelectableEditor) ScrollUp(n int) {
 		e.moveCursorUp()
 	}
 	e.adjustViewOffset()
+	e.syncVisualYOffset()
 }
 
 // ScrollDown moves cursor and viewport down by n lines.
@@ -246,6 +255,7 @@ func (e *SelectableEditor) ScrollDown(n int) {
 		e.moveCursorDown()
 	}
 	e.adjustViewOffset()
+	e.syncVisualYOffset()
 }
 
 func (e *SelectableEditor) moveTo(line, col int) {
@@ -324,6 +334,24 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 	return nil
 }
 
+// syncVisualYOffset mirrors bubbles' repositionView: keeps visualYOffset
+// such that the cursor's visual row stays within [visualYOffset,
+// visualYOffset+height). Call after any cursor movement so click
+// translation stays in sync with the textarea's internal scroll.
+func (e *SelectableEditor) syncVisualYOffset() {
+	wrapWidth := e.Width()
+	row := cursorVisualRow(e.Value(), e.Line(), e.cursorCol(), wrapWidth)
+	if row < e.visualYOffset {
+		e.visualYOffset = row
+	}
+	if e.height > 0 && row >= e.visualYOffset+e.height {
+		e.visualYOffset = row - e.height + 1
+	}
+	if e.visualYOffset < 0 {
+		e.visualYOffset = 0
+	}
+}
+
 func (e *SelectableEditor) adjustViewOffset() {
 	if e.height <= 0 {
 		return
@@ -338,6 +366,7 @@ func (e *SelectableEditor) adjustViewOffset() {
 }
 
 func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
+	defer e.syncVisualYOffset()
 	key := msg.String()
 
 	switch key {
@@ -411,57 +440,99 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
+var cursorStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color("252")).
+	Foreground(lipgloss.Color("235"))
+
 func (e SelectableEditor) View() string {
-	if !e.selActive {
-		return e.Model.View()
-	}
-	return e.renderWithSelection()
+	return e.render()
 }
 
-func (e SelectableEditor) renderWithSelection() string {
+// render draws the editor ourselves, handling both selection and
+// non-selection cases. Soft-wrap is done by wrapContent (word-wrap with
+// char-break fallback); click translation uses the same function so
+// visual rows and logical cursor positions stay in sync.
+func (e SelectableEditor) render() string {
 	content := e.Value()
 	lines := strings.Split(content, "\n")
 	height := e.height
 	if height <= 0 {
 		height = 10
 	}
+	wrapWidth := e.Width()
+	if wrapWidth <= 0 {
+		wrapWidth = 80
+	}
 
-	// viewOffset is maintained by adjustViewOffset() in HandleKey
-	sLine, sCol, eLine, eCol := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+	sLine, sCol, eLine, eCol := 0, 0, 0, 0
+	if e.selActive {
+		sLine, sCol, eLine, eCol = selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+	}
+	cursorLine := e.Line()
+	cursorCol := e.cursorCol()
 
 	numWidth := len(fmt.Sprintf("%d", len(lines)))
 	if numWidth < 2 {
 		numWidth = 2
 	}
 
-	var b strings.Builder
-	endIdx := e.viewOffset + height
-	if endIdx > len(lines) {
-		endIdx = len(lines)
-	}
+	rows := wrapContent(content, wrapWidth)
 
-	for i := e.viewOffset; i < endIdx; i++ {
-		lineNum := fmt.Sprintf("%*d", numWidth, i+1)
-		b.WriteString(lineNumberStyle.Render(lineNum))
+	var b strings.Builder
+	endIdx := e.visualYOffset + height
+	if endIdx > len(rows) {
+		endIdx = len(rows)
+	}
+	drawnRows := 0
+
+	for i := e.visualYOffset; i < endIdx; i++ {
+		r := rows[i]
+		if r.startCol == 0 {
+			b.WriteString(lineNumberStyle.Render(fmt.Sprintf("%*d", numWidth, r.line+1)))
+		} else {
+			b.WriteString(lineNumberStyle.Render(strings.Repeat(" ", numWidth)))
+		}
 		b.WriteString(" ")
 
-		runes := []rune(lines[i])
-		for j, r := range runes {
-			if posInRange(i, j, sLine, sCol, eLine, eCol) {
-				b.WriteString(selectionStyle.Render(string(r)))
-			} else {
-				b.WriteString(string(r))
+		var runes []rune
+		if r.line < len(lines) {
+			runes = []rune(lines[r.line])
+		}
+		end := r.startCol + r.length
+		if end > len(runes) {
+			end = len(runes)
+		}
+		for col := r.startCol; col < end; col++ {
+			ch := runes[col]
+			inSel := e.selActive && posInRange(r.line, col, sLine, sCol, eLine, eCol)
+			isCursor := !e.selActive && r.line == cursorLine && col == cursorCol
+			s := string(ch)
+			switch {
+			case isCursor:
+				b.WriteString(cursorStyle.Render(s))
+			case inSel:
+				b.WriteString(selectionStyle.Render(s))
+			default:
+				b.WriteString(s)
 			}
 		}
 
-		if i < endIdx-1 {
-			b.WriteString("\n")
+		// Trailing cursor at or past end of line, drawn on the last wrap
+		// row of the cursor's logical line.
+		if !e.selActive && r.line == cursorLine {
+			isLastOfLine := i == len(rows)-1 || rows[i+1].line != r.line
+			if isLastOfLine && cursorCol >= end {
+				b.WriteString(cursorStyle.Render(" "))
+			}
 		}
+
+		b.WriteString("\n")
+		drawnRows++
 	}
 
-	for i := endIdx - e.viewOffset; i < height; i++ {
+	for i := drawnRows; i < height; i++ {
 		b.WriteString("\n")
 	}
 
-	return b.String()
+	return strings.TrimRight(b.String(), "\n")
 }

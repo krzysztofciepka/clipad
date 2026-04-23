@@ -40,30 +40,115 @@ func editorNumWidth(content string) int {
 	return w
 }
 
+// wrapRow describes one visual row in a wrapped view of the content.
+type wrapRow struct {
+	line     int // logical line index
+	startCol int // first column (rune index) of this wrap row within the line
+	length   int // number of runes on this wrap row
+}
+
+// wrapLineStarts returns the rune indices where a line soft-wraps. Greedy
+// word-wrap: breaks at the last space inside a `width`-rune window; falls
+// back to a hard break at `width` when no space is available (very long
+// words). The first entry is always 0.
+func wrapLineStarts(runes []rune, width int) []int {
+	if width <= 0 || len(runes) == 0 {
+		return []int{0}
+	}
+	starts := []int{0}
+	cursor := 0
+	for cursor+width < len(runes) {
+		breakAt := -1
+		for i := cursor + width - 1; i > cursor; i-- {
+			if runes[i] == ' ' || runes[i] == '\t' {
+				breakAt = i + 1
+				break
+			}
+		}
+		if breakAt <= cursor {
+			breakAt = cursor + width
+		}
+		starts = append(starts, breakAt)
+		cursor = breakAt
+	}
+	return starts
+}
+
+// wrapContent builds the visual-row layout for content at wrapWidth. Both
+// the renderer and the click translation derive their positions from this,
+// so they stay in sync regardless of the wrap rule used.
+func wrapContent(content string, wrapWidth int) []wrapRow {
+	lines := strings.Split(content, "\n")
+	var rows []wrapRow
+	for li, ln := range lines {
+		runes := []rune(ln)
+		if len(runes) == 0 {
+			rows = append(rows, wrapRow{line: li})
+			continue
+		}
+		starts := wrapLineStarts(runes, wrapWidth)
+		for idx, start := range starts {
+			end := len(runes)
+			if idx+1 < len(starts) {
+				end = starts[idx+1]
+			}
+			rows = append(rows, wrapRow{line: li, startCol: start, length: end - start})
+		}
+	}
+	if len(rows) == 0 {
+		rows = append(rows, wrapRow{line: 0})
+	}
+	return rows
+}
+
+// cursorVisualRow returns the visual-row index of a cursor at logical
+// (line, col) in the wrapped layout.
+func cursorVisualRow(content string, line, col, wrapWidth int) int {
+	rows := wrapContent(content, wrapWidth)
+	for i, r := range rows {
+		if r.line != line {
+			continue
+		}
+		// last wrap row of this line absorbs col == startCol+length
+		isLastOfLine := i == len(rows)-1 || rows[i+1].line != line
+		if col >= r.startCol && col < r.startCol+r.length {
+			return i
+		}
+		if isLastOfLine && col == r.startCol+r.length {
+			return i
+		}
+	}
+	return 0
+}
+
 // mousePosToEditorCursor translates panel-local coordinates to a (line, col)
 // position in the editor content. Accounts for editorStyle's Padding(0, 1)
-// left padding and the line-number column plus its trailing space.
-func mousePosToEditorCursor(content string, viewOffset, localX, localY, numWidth int) (line, col int) {
-	lines := strings.Split(content, "\n")
-	if len(lines) == 0 {
+// left padding, the line-number column plus its trailing space, the
+// textarea's visual scroll offset, and the wrap layout produced by
+// wrapContent.
+func mousePosToEditorCursor(content string, visualYOffset, localX, localY, numWidth, wrapWidth int) (line, col int) {
+	rows := wrapContent(content, wrapWidth)
+	if len(rows) == 0 {
 		return 0, 0
 	}
-	line = viewOffset + localY
-	if line < 0 {
-		line = 0
+	visualRow := visualYOffset + localY
+	if visualRow < 0 {
+		visualRow = 0
 	}
-	if line > len(lines)-1 {
-		line = len(lines) - 1
+	if visualRow >= len(rows) {
+		visualRow = len(rows) - 1
 	}
+	r := rows[visualRow]
+
 	col = localX - numWidth - 2
 	if col < 0 {
 		col = 0
 	}
-	runes := []rune(lines[line])
-	if col > len(runes) {
-		col = len(runes)
+	col += r.startCol
+	if col > r.startCol+r.length {
+		col = r.startCol + r.length
 	}
-	return line, col
+	return r.line, col
 }
 
 // mousePosToTreeRow translates local Y in the tree panel to an absolute row
@@ -78,7 +163,8 @@ func handleEditorMouse(m model, localX, localY int, msg tea.MouseMsg) (tea.Model
 	switch msg.Button {
 	case tea.MouseButtonLeft:
 		numWidth := editorNumWidth(m.editor.Value())
-		line, col := mousePosToEditorCursor(m.editor.Value(), m.editor.viewOffset, localX, localY, numWidth)
+		wrapWidth := m.editor.Width()
+		line, col := mousePosToEditorCursor(m.editor.Value(), m.editor.visualYOffset, localX, localY, numWidth, wrapWidth)
 		switch msg.Action {
 		case tea.MouseActionPress:
 			m.activePanel = editorPanel
