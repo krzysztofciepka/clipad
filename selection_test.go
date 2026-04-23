@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -590,5 +591,52 @@ func TestSelectableEditor_ScrollBreaksGroup(t *testing.T) {
 	}
 	if e.Value() != "line1\nline2\nline3\nline4\nline5" {
 		t.Fatalf("after 2 undos Value = %q", e.Value())
+	}
+}
+
+func TestOpenFileClearsHistory(t *testing.T) {
+	dir := t.TempDir()
+	notePath := dir + "/note.md"
+	if err := os.WriteFile(notePath, []byte("seed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newModel(dir, nil, "")
+	typeRunes(&m.editor, "typed")
+	if len(m.editor.history.undoStack) == 0 {
+		t.Fatal("precondition: undo stack should have an entry after typing")
+	}
+	m.openFile(notePath)
+	if len(m.editor.history.undoStack) != 0 || len(m.editor.history.redoStack) != 0 {
+		t.Fatalf("after openFile, undo=%d redo=%d; want 0,0",
+			len(m.editor.history.undoStack), len(m.editor.history.redoStack))
+	}
+	if m.editor.Undo() {
+		t.Fatal("Undo should be no-op after file switch")
+	}
+}
+
+func TestFindReplaceIsUndoableAsOp(t *testing.T) {
+	dir := t.TempDir()
+	notePath := dir + "/note.md"
+	if err := os.WriteFile(notePath, []byte("foo bar foo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(dir, nil, "")
+	m.openFile(notePath)
+	m.replaceSearchTerm = "foo"
+	m.replaceWithInput.SetValue("BAZ")
+	m.inputMode = inputReplaceWith
+	next, _ := m.handleReplaceWith(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+
+	if m.editor.Value() != "BAZ bar BAZ" {
+		t.Fatalf("after replace, Value = %q", m.editor.Value())
+	}
+	if !m.editor.Undo() {
+		t.Fatal("Undo should succeed after find/replace")
+	}
+	if m.editor.Value() != "foo bar foo" {
+		t.Fatalf("after undo, Value = %q", m.editor.Value())
 	}
 }

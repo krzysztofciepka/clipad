@@ -28,10 +28,13 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y":
 		if m.shortcutOnSelection {
+			// ReplaceSelection records its own op entry.
 			m.editor.ReplaceSelection(m.pluginDiffResult)
 			m.shortcutOnSelection = false
 		} else {
+			pre := m.editor.recordOp()
 			m.editor.SetValue(m.pluginDiffResult)
+			m.editor.commitOp(pre)
 		}
 		m.editor.ClearSelection()
 		// cleanContent unchanged — editor now differs from it, so isDirty() returns true

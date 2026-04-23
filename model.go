@@ -918,8 +918,10 @@ func (m model) handleReplaceWith(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		replacement := m.replaceWithInput.Value()
 		content := m.editor.Value()
+		pre := m.editor.recordOp()
 		newContent := strings.ReplaceAll(content, m.replaceSearchTerm, replacement)
 		m.editor.SetValue(newContent)
+		m.editor.commitOp(pre)
 		count := strings.Count(content, m.replaceSearchTerm)
 		m.errMsg = fmt.Sprintf("Replaced %d occurrence(s)", count)
 		m.inputMode = inputNone
@@ -988,6 +990,7 @@ func (m *model) openFile(path string) {
 		return
 	}
 	m.currentFile = path
+	m.editor.ClearHistory()
 	m.editor.SetValue(string(data))
 	m.cleanContent = string(data)
 	m.editorMode = modeEdit
@@ -1034,6 +1037,7 @@ func (m *model) startNewNote() {
 
 	m.newNoteDir = dir
 	m.currentFile = ""
+	m.editor.ClearHistory()
 	m.editor.SetValue("")
 	m.cleanContent = ""
 	m.editor.Focus()
