@@ -391,6 +391,12 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	key := msg.String()
 
 	switch key {
+	case "ctrl+z":
+		e.Undo()
+		return nil
+	case "ctrl+shift+z", "ctrl+y":
+		e.Redo()
+		return nil
 	case "shift+left":
 		e.startSelectionIfNeeded()
 		e.moveCursorLeft()

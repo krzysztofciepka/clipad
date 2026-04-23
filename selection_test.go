@@ -508,3 +508,40 @@ func TestSelectableEditor_OpsEachPushOwnGroup(t *testing.T) {
 		t.Fatalf("after 2nd undo, Value = %q", e.Value())
 	}
 }
+
+func TestSelectableEditor_CtrlZUndos(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	typeRunes(&e, "hello")
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	if e.Value() != "" {
+		t.Fatalf("after Ctrl+Z, Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_CtrlShiftZRedos(t *testing.T) {
+	t.Skip("bubbletea KeyMsg does not surface ctrl+shift+z distinctly; covered by Ctrl+Y test")
+}
+
+func TestSelectableEditor_CtrlYRedos(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	typeRunes(&e, "hello")
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlY})
+	if e.Value() != "hello" {
+		t.Fatalf("after Ctrl+Y redo, Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_NewEditAfterUndoClearsRedo(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	typeRunes(&e, "a")
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	typeRunes(&e, "b")
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlY})
+	if e.Value() != "b" {
+		t.Fatalf("after new edit + Ctrl+Y, Value = %q, want \"b\"", e.Value())
+	}
+}
