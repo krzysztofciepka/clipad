@@ -179,19 +179,27 @@ func (e *SelectableEditor) DeleteSelection() {
 	if !e.selActive {
 		return
 	}
+	pre := e.recordOp()
 	sL, sC, eL, eC := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
 	newContent := deleteText(e.Value(), sL, sC, eL, eC)
 	e.SetValue(newContent)
 	e.moveTo(sL, sC)
 	e.selActive = false
+	e.commitOp(pre)
 }
 
 func (e *SelectableEditor) ReplaceSelection(text string) {
 	if !e.selActive {
 		return
 	}
-	e.DeleteSelection()
+	pre := e.recordOp()
+	sL, sC, eL, eC := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+	newContent := deleteText(e.Value(), sL, sC, eL, eC)
+	e.SetValue(newContent)
+	e.moveTo(sL, sC)
+	e.selActive = false
 	e.InsertString(text)
+	e.commitOp(pre)
 }
 
 func (e *SelectableEditor) SelectAll() {
@@ -320,7 +328,13 @@ func (e *SelectableEditor) Cut() {
 		return
 	}
 	e.copyToClipboard(e.SelectedText())
-	e.DeleteSelection()
+	pre := e.recordOp()
+	sL, sC, eL, eC := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+	newContent := deleteText(e.Value(), sL, sC, eL, eC)
+	e.SetValue(newContent)
+	e.moveTo(sL, sC)
+	e.selActive = false
+	e.commitOp(pre)
 }
 
 func (e *SelectableEditor) Paste() tea.Cmd {
@@ -328,10 +342,16 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	pre := e.recordOp()
 	if e.selActive {
-		e.DeleteSelection()
+		sL, sC, eL, eC := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+		newContent := deleteText(e.Value(), sL, sC, eL, eC)
+		e.SetValue(newContent)
+		e.moveTo(sL, sC)
+		e.selActive = false
 	}
 	e.InsertString(text)
+	e.commitOp(pre)
 	return nil
 }
 

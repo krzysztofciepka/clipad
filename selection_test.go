@@ -423,3 +423,88 @@ func TestSelectableEditor_NoOpBackspaceAtStartNoHistoryEntry(t *testing.T) {
 		t.Fatalf("undoStack after no-op backspace: %d entries, want 0", len(e.history.undoStack))
 	}
 }
+
+func TestSelectableEditor_DeleteSelectionIsUndoable(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetValue("hello world")
+	e.moveTo(0, 0)
+	e.selAnchorLine, e.selAnchorCol, e.selActive = 0, 0, true
+	e.moveTo(0, 5)
+	e.DeleteSelection()
+	if e.Value() != " world" {
+		t.Fatalf("after DeleteSelection, Value = %q", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("Undo should succeed after DeleteSelection")
+	}
+	if e.Value() != "hello world" {
+		t.Fatalf("after undo, Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_ReplaceSelectionIsUndoable(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetValue("foo bar")
+	e.moveTo(0, 0)
+	e.selAnchorLine, e.selAnchorCol, e.selActive = 0, 0, true
+	e.moveTo(0, 3)
+	e.ReplaceSelection("baz")
+	if e.Value() != "baz bar" {
+		t.Fatalf("after ReplaceSelection, Value = %q", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("Undo should succeed after ReplaceSelection")
+	}
+	if e.Value() != "foo bar" {
+		t.Fatalf("after undo, Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_CutIsUndoable(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetValue("abc")
+	e.moveTo(0, 0)
+	e.selAnchorLine, e.selAnchorCol, e.selActive = 0, 0, true
+	e.moveTo(0, 3)
+	e.Cut()
+	if e.Value() != "" {
+		t.Fatalf("after Cut, Value = %q", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("Undo should succeed after Cut")
+	}
+	if e.Value() != "abc" {
+		t.Fatalf("after undo, Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_OpsEachPushOwnGroup(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetValue("hello world")
+
+	e.moveTo(0, 0)
+	e.selAnchorLine, e.selAnchorCol, e.selActive = 0, 0, true
+	e.moveTo(0, 5)
+	e.DeleteSelection()
+
+	e.moveTo(0, 0)
+	e.selAnchorLine, e.selAnchorCol, e.selActive = 0, 0, true
+	e.moveTo(0, 6)
+	e.ReplaceSelection("X")
+
+	if e.Value() != "X" {
+		t.Fatalf("Value = %q, want X", e.Value())
+	}
+	e.Undo()
+	if e.Value() != " world" {
+		t.Fatalf("after 1st undo, Value = %q", e.Value())
+	}
+	e.Undo()
+	if e.Value() != "hello world" {
+		t.Fatalf("after 2nd undo, Value = %q", e.Value())
+	}
+}
