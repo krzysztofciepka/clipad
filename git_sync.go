@@ -185,3 +185,23 @@ func handleSyncConflict(vault string) gitSyncResultMsg {
 
 	return gitSyncResultMsg{pulled: true, pushed: true, pushErr: pushErr}
 }
+
+func (m model) triggerManualGitSync() (tea.Model, tea.Cmd) {
+	if m.gitSyncRunning {
+		return m, nil
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		m.errMsg = "Git sync: " + err.Error()
+		return m, nil
+	}
+	if cfg.GitRemote == "" {
+		m.inputMode = inputGitRemote
+		m.gitRemoteInput.SetValue("")
+		cmd := m.gitRemoteInput.Focus()
+		return m, cmd
+	}
+	m.gitSyncRunning = true
+	m.gitSyncError = ""
+	return m, runGitSync(m.vault, cfg.GitRemote)
+}

@@ -1,0 +1,309 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func TestHitTestPanel(t *testing.T) {
+	tests := []struct {
+		name                           string
+		treeWidth, width, height, x, y int
+		wantHit                        panel
+		wantLocalX, wantLocalY         int
+		wantOK                         bool
+	}{
+		{"tree area", 20, 100, 30, 5, 5, treePanel, 5, 5, true},
+		{"border column rejected", 20, 100, 30, 20, 5, 0, 0, 0, false},
+		{"editor area", 20, 100, 30, 25, 5, editorPanel, 4, 5, true},
+		{"status bar row rejected", 20, 100, 30, 5, 29, 0, 0, 0, false},
+		{"out of bounds negative", 20, 100, 30, -1, 5, 0, 0, 0, false},
+		{"out of bounds right", 20, 100, 30, 100, 5, 0, 0, 0, false},
+		{"out of bounds below", 20, 100, 30, 5, 30, 0, 0, 0, false},
+		{"narrow terminal treats all as editor", 0, 20, 30, 5, 5, editorPanel, 5, 5, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hit, lx, ly, ok := hitTestPanel(tt.treeWidth, tt.width, tt.height, tt.x, tt.y)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if hit != tt.wantHit || lx != tt.wantLocalX || ly != tt.wantLocalY {
+				t.Errorf("hit=%v local=(%d,%d), want %v (%d,%d)",
+					hit, lx, ly, tt.wantHit, tt.wantLocalX, tt.wantLocalY)
+			}
+		})
+	}
+}
+
+func TestMousePosToEditorCursor(t *testing.T) {
+	content := "hello\nworld\nfoo bar"
+	tests := []struct {
+		name                                 string
+		viewOffset, localX, localY, numWidth int
+		wantLine, wantCol                    int
+	}{
+		{"first line first char", 0, 4, 0, 2, 0, 0},
+		{"first line middle", 0, 6, 0, 2, 0, 2},
+		{"past line length clamps", 0, 20, 0, 2, 0, 5},
+		{"second line", 0, 4, 1, 2, 1, 0},
+		{"viewOffset shifts", 1, 4, 0, 2, 1, 0},
+		{"past content clamps to last line", 0, 4, 99, 2, 2, 0},
+		{"click in line number column", 0, 2, 0, 2, 0, 0},
+		{"click in padding", 0, 0, 0, 2, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			line, col := mousePosToEditorCursor(content, tt.viewOffset, tt.localX, tt.localY, tt.numWidth)
+			if line != tt.wantLine || col != tt.wantCol {
+				t.Errorf("got (%d,%d), want (%d,%d)", line, col, tt.wantLine, tt.wantCol)
+			}
+		})
+	}
+}
+
+func TestMousePosToTreeRow(t *testing.T) {
+	if got := mousePosToTreeRow(0, 5); got != 5 {
+		t.Errorf("got %d, want 5", got)
+	}
+	if got := mousePosToTreeRow(10, 3); got != 13 {
+		t.Errorf("got %d, want 13", got)
+	}
+}
+
+func TestEditorNumWidth(t *testing.T) {
+	tests := []struct {
+		content string
+		want    int
+	}{
+		{"single line", 2},
+		{"one\ntwo\nthree", 2},
+		{strings.Repeat("x\n", 98) + "x", 2},  // 99 lines → 2 digits
+		{strings.Repeat("x\n", 99) + "x", 3},  // 100 lines → 3 digits
+	}
+	for _, tt := range tests {
+		if got := editorNumWidth(tt.content); got != tt.want {
+			t.Errorf("editorNumWidth(%d lines) = %d, want %d",
+				strings.Count(tt.content, "\n")+1, got, tt.want)
+		}
+	}
+}
+
+func newMouseTestModel(t *testing.T) model {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	m := newModel(vault, nil, "")
+	m.width = 100
+	m.height = 30
+	m.treeWidth = 20
+	m.editorWidth = 79
+	m.editorHeight = 29
+	setEditorSize(&m.editor, m.editorWidth, m.editorHeight)
+	return m
+}
+
+func TestHandleEditorMouse_PressPositionsCursor(t *testing.T) {
+	m := newMouseTestModel(t)
+	m.editor.SetValue("hello world\nsecond line")
+	m.activePanel = treePanel
+
+	// Editor local (5, 0). Col = 5-2-2 = 1.
+	msg := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleEditorMouse(m, 5, 0, msg)
+	nm := next.(model)
+	if nm.activePanel != editorPanel {
+		t.Errorf("activePanel = %v, want editorPanel", nm.activePanel)
+	}
+	if nm.editor.Line() != 0 || nm.editor.cursorCol() != 1 {
+		t.Errorf("cursor = (%d,%d), want (0,1)", nm.editor.Line(), nm.editor.cursorCol())
+	}
+}
+
+func TestHandleEditorMouse_DragSelects(t *testing.T) {
+	m := newMouseTestModel(t)
+	m.editor.SetValue("hello world")
+
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleEditorMouse(m, 5, 0, press)
+	m = next.(model)
+
+	motion := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion}
+	next, _ = handleEditorMouse(m, 9, 0, motion)
+	m = next.(model)
+
+	if !m.editor.selActive {
+		t.Error("selActive should be true after motion")
+	}
+	got := m.editor.SelectedText()
+	if got != "ello" {
+		t.Errorf("SelectedText = %q, want %q", got, "ello")
+	}
+
+	release := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease}
+	next, _ = handleEditorMouse(m, 9, 0, release)
+	m = next.(model)
+	if !m.editor.selActive {
+		t.Error("selActive should persist after release with selection")
+	}
+}
+
+func TestHandleEditorMouse_WheelScrolls(t *testing.T) {
+	m := newMouseTestModel(t)
+	m.editor.SetValue("line1\nline2\nline3\nline4\nline5")
+	m.editor.StartMouseDrag(3, 0)
+	m.editor.EndMouseDrag()
+
+	wheel := tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress}
+	next, _ := handleEditorMouse(m, 0, 0, wheel)
+	m = next.(model)
+	if m.editor.Line() != 0 {
+		t.Errorf("line after wheel up = %d, want 0", m.editor.Line())
+	}
+
+	wheelDown := tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress}
+	next, _ = handleEditorMouse(m, 0, 0, wheelDown)
+	m = next.(model)
+	if m.editor.Line() != 3 {
+		t.Errorf("line after wheel down = %d, want 3", m.editor.Line())
+	}
+}
+
+func TestHandleEditorMouse_PreviewModeClickFocusesEdit(t *testing.T) {
+	m := newMouseTestModel(t)
+	m.editor.SetValue("hello")
+	m.editorMode = modePreview
+	m.activePanel = editorPanel
+
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleEditorMouse(m, 5, 0, press)
+	m = next.(model)
+	if m.editorMode != modeEdit {
+		t.Errorf("editorMode = %v, want modeEdit", m.editorMode)
+	}
+}
+
+func newMouseTreeModel(t *testing.T) model {
+	t.Helper()
+	m := newMouseTestModel(t)
+	vault := m.vault
+	os.WriteFile(filepath.Join(vault, "alpha.md"), []byte("alpha"), 0o644)
+	os.WriteFile(filepath.Join(vault, "beta.md"), []byte("beta"), 0o644)
+	os.Mkdir(filepath.Join(vault, "sub"), 0o755)
+	os.WriteFile(filepath.Join(vault, "sub", "c.md"), []byte("c"), 0o644)
+	m.refreshTree()
+	m.tree.height = 10
+	m.tree.width = 20
+	return m
+}
+
+func TestHandleTreeMouse_ClickFileSelectsAndPreviews(t *testing.T) {
+	m := newMouseTreeModel(t)
+	// Row 0 = "sub" directory, row 1 = "alpha.md"
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleTreeMouse(m, 1, press)
+	m = next.(model)
+	if m.tree.cursor != 1 {
+		t.Errorf("tree.cursor = %d, want 1", m.tree.cursor)
+	}
+	if m.currentFile == "" {
+		t.Error("currentFile should be set after clicking a file")
+	}
+	if m.editorMode != modePreview {
+		t.Errorf("editorMode = %v, want modePreview", m.editorMode)
+	}
+	if m.activePanel != treePanel {
+		t.Errorf("activePanel = %v, want treePanel", m.activePanel)
+	}
+}
+
+func TestHandleTreeMouse_ClickFolderToggles(t *testing.T) {
+	m := newMouseTreeModel(t)
+	node := m.tree.items[0].Node
+	if !node.IsDir {
+		t.Fatalf("expected row 0 to be a directory; got %+v", node)
+	}
+	initialExpanded := node.Expanded
+
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleTreeMouse(m, 0, press)
+	m = next.(model)
+	if m.tree.items[0].Node.Expanded == initialExpanded {
+		t.Error("folder expanded state should have toggled")
+	}
+}
+
+func TestHandleTreeMouse_WheelScrolls(t *testing.T) {
+	m := newMouseTreeModel(t)
+	m.tree.offset = 0
+	wheel := tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress}
+	next, _ := handleTreeMouse(m, 0, wheel)
+	m = next.(model)
+	if m.tree.offset < 0 {
+		t.Errorf("offset went negative: %d", m.tree.offset)
+	}
+
+	m.tree.offset = 5
+	wheelUp := tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress}
+	next, _ = handleTreeMouse(m, 0, wheelUp)
+	m = next.(model)
+	if m.tree.offset > 2 {
+		t.Errorf("offset after wheel up = %d, want <= 2", m.tree.offset)
+	}
+}
+
+func TestHandleTreeMouse_OutOfBoundsRowIgnored(t *testing.T) {
+	m := newMouseTreeModel(t)
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	before := m.tree.cursor
+	next, _ := handleTreeMouse(m, 99, press)
+	m = next.(model)
+	if m.tree.cursor != before {
+		t.Errorf("cursor moved unexpectedly: before=%d after=%d", before, m.tree.cursor)
+	}
+}
+
+func TestHandleMouseMsg_StatusBarIgnored(t *testing.T) {
+	m := newMouseTestModel(t)
+	before := m.activePanel
+	msg := tea.MouseMsg{X: 10, Y: 29, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, cmd := handleMouseMsg(m, msg)
+	m = next.(model)
+	if cmd != nil {
+		t.Error("status-bar click should return nil cmd")
+	}
+	if m.activePanel != before {
+		t.Error("status-bar click should not change active panel")
+	}
+}
+
+func TestHandleMouseMsg_PreviewWheelForwardsToViewport(t *testing.T) {
+	m := newMouseTestModel(t)
+	m.editorMode = modePreview
+	m.activePanel = editorPanel
+	msg := tea.MouseMsg{X: 50, Y: 5, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress}
+	next, _ := handleMouseMsg(m, msg)
+	m = next.(model)
+	if m.editorMode != modePreview {
+		t.Error("preview wheel should not change editorMode")
+	}
+}
+
+func TestHandleMouseMsg_RoutesToEditor(t *testing.T) {
+	m := newMouseTestModel(t)
+	m.editor.SetValue("hello")
+	msg := tea.MouseMsg{X: 25, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleMouseMsg(m, msg)
+	m = next.(model)
+	if m.activePanel != editorPanel {
+		t.Errorf("activePanel = %v, want editorPanel", m.activePanel)
+	}
+}

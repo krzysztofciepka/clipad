@@ -354,6 +354,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inputMode = inputPluginDiff
 		return m, nil
 
+	case tea.MouseMsg:
+		if m.pluginProcessing {
+			return m, nil
+		}
+		if m.inputMode != inputNone {
+			return m, nil
+		}
+		return handleMouseMsg(m, msg)
+
 	case tea.KeyMsg:
 		if m.pluginProcessing {
 			return m, nil
@@ -444,6 +453,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+p":
 			return m.togglePreview()
+
+		case "ctrl+y":
+			return m.triggerManualGitSync()
 
 		case "ctrl+@":
 			if m.currentFile != "" || m.newNoteDir != "" {

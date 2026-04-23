@@ -23,6 +23,7 @@ type SelectableEditor struct {
 	selAnchorCol  int
 	textClip      string
 	viewOffset    int
+	mouseDragging bool
 }
 
 // --- Pure helper functions ---
@@ -194,6 +195,57 @@ func (e *SelectableEditor) SelectAll() {
 	e.selAnchorCol = 0
 	e.moveTo(lastLine, lastCol)
 	e.selActive = true
+}
+
+// StartMouseDrag positions the cursor at (line, col) and records the click as
+// a potential selection anchor. Selection is not yet active — only a
+// subsequent UpdateMouseDrag to a different position activates it.
+func (e *SelectableEditor) StartMouseDrag(line, col int) {
+	e.moveTo(line, col)
+	e.selAnchorLine = line
+	e.selAnchorCol = col
+	e.selActive = false
+	e.mouseDragging = true
+}
+
+// UpdateMouseDrag moves the cursor during a drag. The first position that
+// differs from the anchor activates the selection.
+func (e *SelectableEditor) UpdateMouseDrag(line, col int) {
+	if !e.mouseDragging {
+		return
+	}
+	e.moveTo(line, col)
+	if line != e.selAnchorLine || col != e.selAnchorCol {
+		e.selActive = true
+	} else {
+		e.selActive = false
+	}
+	e.adjustViewOffset()
+}
+
+// EndMouseDrag finishes a drag. Clears mouseDragging. If the cursor is still
+// at the anchor (no drag happened), selection is cleared.
+func (e *SelectableEditor) EndMouseDrag() {
+	e.mouseDragging = false
+	if e.Line() == e.selAnchorLine && e.cursorCol() == e.selAnchorCol {
+		e.ClearSelection()
+	}
+}
+
+// ScrollUp moves cursor and viewport up by n lines.
+func (e *SelectableEditor) ScrollUp(n int) {
+	for i := 0; i < n; i++ {
+		e.moveCursorUp()
+	}
+	e.adjustViewOffset()
+}
+
+// ScrollDown moves cursor and viewport down by n lines.
+func (e *SelectableEditor) ScrollDown(n int) {
+	for i := 0; i < n; i++ {
+		e.moveCursorDown()
+	}
+	e.adjustViewOffset()
 }
 
 func (e *SelectableEditor) moveTo(line, col int) {

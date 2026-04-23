@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGitCmd(t *testing.T) {
@@ -239,5 +240,76 @@ func TestSyncConflictName(t *testing.T) {
 				t.Errorf("syncConflictName(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTriggerManualGitSync_SkipsIfAlreadyRunning(t *testing.T) {
+	m := newTestModel(t)
+	m.gitSyncRunning = true
+	next, cmd := m.triggerManualGitSync()
+	if cmd != nil {
+		t.Error("expected nil cmd when already running")
+	}
+	nm := next.(model)
+	if !nm.gitSyncRunning {
+		t.Error("gitSyncRunning should remain true")
+	}
+}
+
+func TestTriggerManualGitSync_ConfigErrorSetsErrMsg(t *testing.T) {
+	m := newTestModel(t)
+	next, cmd := m.triggerManualGitSync()
+	if cmd != nil {
+		t.Error("expected nil cmd on config error")
+	}
+	nm := next.(model)
+	if nm.errMsg == "" {
+		t.Error("errMsg should be set on config error")
+	}
+}
+
+func TestTriggerManualGitSync_NoRemotePromptsForURL(t *testing.T) {
+	m := newTestModel(t)
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	cfgDir := filepath.Join(xdg, "clipad")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(cfgDir, "config.toml"),
+		[]byte(`vault = "/tmp/test"`+"\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	next, _ := m.triggerManualGitSync()
+	nm := next.(model)
+	if nm.inputMode != inputGitRemote {
+		t.Errorf("inputMode = %v, want inputGitRemote", nm.inputMode)
+	}
+}
+
+func TestTriggerManualGitSync_BypassesLastSyncGuard(t *testing.T) {
+	m := newTestModel(t)
+	remote := initBareRemote(t)
+	m.vault = initLocalWithRemote(t, remote)
+
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	cfgDir := filepath.Join(xdg, "clipad")
+	os.MkdirAll(cfgDir, 0o755)
+	recent := time.Now().Format(time.RFC3339)
+	cfg := `vault = "` + m.vault + `"` + "\n" +
+		`git_remote = "` + remote + `"` + "\n" +
+		`last_sync = "` + recent + `"` + "\n"
+	os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(cfg), 0o644)
+
+	next, cmd := m.triggerManualGitSync()
+	nm := next.(model)
+	if !nm.gitSyncRunning {
+		t.Error("gitSyncRunning should be true after manual trigger")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil sync cmd")
 	}
 }

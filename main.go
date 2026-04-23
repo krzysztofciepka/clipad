@@ -125,7 +125,7 @@ func main() {
 			[]byte("# Welcome to Clipad\n\nStart writing your notes here.\n"), 0o644)
 		m.refreshTree()
 	}
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

@@ -52,6 +52,7 @@ On first run, you'll be prompted to set your vault path (the directory where you
 | `Ctrl+N` | New note (filename derived from first line) |
 | `Ctrl+R` | Find & replace |
 | `Ctrl+P` | Toggle markdown preview |
+| `Ctrl+Y` | Sync with git remote (push/pull) |
 | `Ctrl+Q` | Quit |
 | `Tab` | Switch panels |
 | `Ctrl+Space` | Open plugin selector |
@@ -74,6 +75,19 @@ On first run, you'll be prompted to set your vault path (the directory where you
 |-----|--------|
 | `Esc` | Return to file tree |
 | All other keys | Normal text editing |
+
+### Mouse
+
+| Action | Effect |
+|--------|--------|
+| Click in editor | Move cursor to clicked position |
+| Click-drag in editor | Select text (same as shift+arrow) |
+| Wheel up / down in editor | Scroll editor contents |
+| Click on file in tree | Move tree cursor and open file in preview |
+| Click on folder in tree | Expand / collapse the folder |
+| Wheel up / down in tree | Scroll tree |
+
+Terminal-native selection (dragging with the OS to copy outside the app) is disabled while clipad has the mouse. Most terminals still allow Shift+drag to bypass the app and use the OS selection.
 
 ## Plugins
 
