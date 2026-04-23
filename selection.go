@@ -375,65 +375,113 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 		e.startSelectionIfNeeded()
 		e.moveCursorLeft()
 		e.adjustViewOffset()
+		e.noteMovement()
 		return nil
 	case "shift+right":
 		e.startSelectionIfNeeded()
 		e.moveCursorRight()
 		e.adjustViewOffset()
+		e.noteMovement()
 		return nil
 	case "shift+up":
 		e.startSelectionIfNeeded()
 		e.moveCursorUp()
 		e.adjustViewOffset()
+		e.noteMovement()
 		return nil
 	case "shift+down":
 		e.startSelectionIfNeeded()
 		e.moveCursorDown()
 		e.adjustViewOffset()
+		e.noteMovement()
 		return nil
 	case "shift+home":
 		e.startSelectionIfNeeded()
 		e.SetCursor(0)
 		e.adjustViewOffset()
+		e.noteMovement()
 		return nil
 	case "shift+end":
 		e.startSelectionIfNeeded()
 		e.CursorEnd()
 		e.adjustViewOffset()
+		e.noteMovement()
 		return nil
 	case "ctrl+left":
 		e.ClearSelection()
 		e.moveWordLeft()
+		e.noteMovement()
 		return nil
 	case "ctrl+right":
 		e.ClearSelection()
 		e.moveWordRight()
+		e.noteMovement()
 		return nil
 	case "ctrl+shift+left":
 		e.startSelectionIfNeeded()
 		e.moveWordLeft()
+		e.noteMovement()
 		return nil
 	case "ctrl+shift+right":
 		e.startSelectionIfNeeded()
 		e.moveWordRight()
+		e.noteMovement()
 		return nil
 	case "ctrl+a":
 		e.SelectAll()
+		e.noteMovement()
 		return nil
 	case "backspace", "delete":
 		if e.selActive {
 			e.DeleteSelection()
 			return nil
 		}
+		pre := e.snapshotNow()
+		pushed := e.history.recordBefore(editKindDeleting, pre)
+		var cmd tea.Cmd
+		e.Model, cmd = e.Model.Update(msg)
+		if pushed && e.Value() == pre.content {
+			e.history.revertLastPush()
+		}
+		return cmd
 	}
 
 	if e.selActive && msg.Type == tea.KeyRunes {
-		e.DeleteSelection()
+		// Merged delete-then-insert as a single undo entry. Inline the
+		// selection delete so DeleteSelection doesn't record a separate op.
+		pre := e.recordOp()
+		sL, sC, eL, eC := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+		newContent := deleteText(e.Value(), sL, sC, eL, eC)
+		e.SetValue(newContent)
+		e.moveTo(sL, sC)
+		e.selActive = false
+		var cmd tea.Cmd
+		e.Model, cmd = e.Model.Update(msg)
+		e.commitOp(pre)
+		return cmd
 	} else if e.selActive {
 		switch msg.Type {
 		case tea.KeyLeft, tea.KeyRight, tea.KeyUp, tea.KeyDown, tea.KeyHome, tea.KeyEnd:
 			e.ClearSelection()
+			e.noteMovement()
 		}
+	} else {
+		switch msg.Type {
+		case tea.KeyLeft, tea.KeyRight, tea.KeyUp, tea.KeyDown, tea.KeyHome, tea.KeyEnd:
+			e.noteMovement()
+		}
+	}
+
+	switch msg.Type {
+	case tea.KeyRunes, tea.KeyEnter, tea.KeySpace, tea.KeyTab:
+		pre := e.snapshotNow()
+		pushed := e.history.recordBefore(editKindTyping, pre)
+		var cmd tea.Cmd
+		e.Model, cmd = e.Model.Update(msg)
+		if pushed && e.Value() == pre.content {
+			e.history.revertLastPush()
+		}
+		return cmd
 	}
 
 	var cmd tea.Cmd

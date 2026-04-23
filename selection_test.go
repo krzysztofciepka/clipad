@@ -349,3 +349,77 @@ func TestSelectableEditor_ClearHistoryWipesStacks(t *testing.T) {
 		t.Fatal("ClearHistory must empty both stacks")
 	}
 }
+
+func typeRunes(e *SelectableEditor, s string) {
+	for _, r := range s {
+		e.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+}
+
+func TestSelectableEditor_TypingRunCoalesces(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	typeRunes(&e, "hello world")
+	if !e.Undo() {
+		t.Fatal("Undo should succeed")
+	}
+	if e.Value() != "" {
+		t.Fatalf("after undo, Value = %q, want empty", e.Value())
+	}
+	if e.Redo() != true || e.Value() != "hello world" {
+		t.Fatalf("after redo, Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_CursorMoveBreaksGroup(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	typeRunes(&e, "a")
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyLeft})
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyRight})
+	typeRunes(&e, "b")
+	if !e.Undo() {
+		t.Fatal("first undo should succeed")
+	}
+	if e.Value() != "a" {
+		t.Fatalf("after first undo, Value = %q, want \"a\"", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("second undo should succeed")
+	}
+	if e.Value() != "" {
+		t.Fatalf("after second undo, Value = %q, want empty", e.Value())
+	}
+}
+
+func TestSelectableEditor_TypingThenDeletingSplitsGroup(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	typeRunes(&e, "ab")
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	if e.Value() != "" {
+		t.Fatalf("after backspaces, Value = %q", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("first undo should succeed (undo delete group)")
+	}
+	if e.Value() != "ab" {
+		t.Fatalf("after undo delete group, Value = %q", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("second undo should succeed (undo typing group)")
+	}
+	if e.Value() != "" {
+		t.Fatalf("after undo typing group, Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_NoOpBackspaceAtStartNoHistoryEntry(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	if len(e.history.undoStack) != 0 {
+		t.Fatalf("undoStack after no-op backspace: %d entries, want 0", len(e.history.undoStack))
+	}
+}
