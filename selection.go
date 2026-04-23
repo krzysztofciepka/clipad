@@ -17,14 +17,15 @@ var selectionStyle = lipgloss.NewStyle().
 
 type SelectableEditor struct {
 	textarea.Model
-	height          int
-	selActive       bool
-	selAnchorLine   int
-	selAnchorCol    int
-	textClip        string
-	viewOffset      int
-	mouseDragging   bool
-	visualYOffset   int // mirrors textarea's internal viewport YOffset for click mapping
+	height        int
+	selActive     bool
+	selAnchorLine int
+	selAnchorCol  int
+	textClip      string
+	viewOffset    int
+	mouseDragging bool
+	visualYOffset int // mirrors textarea's internal viewport YOffset for click mapping
+	history       editHistory
 }
 
 // --- Pure helper functions ---
@@ -438,6 +439,75 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
 	e.Model, cmd = e.Model.Update(msg)
 	return cmd
+}
+
+func (e *SelectableEditor) snapshotNow() snapshot {
+	return snapshot{
+		content:       e.Value(),
+		line:          e.Line(),
+		col:           e.cursorCol(),
+		selActive:     e.selActive,
+		selAnchorLine: e.selAnchorLine,
+		selAnchorCol:  e.selAnchorCol,
+	}
+}
+
+func (e *SelectableEditor) restoreSnapshot(s snapshot) {
+	e.SetValue(s.content)
+	e.moveTo(s.line, s.col)
+	e.selActive = s.selActive
+	e.selAnchorLine = s.selAnchorLine
+	e.selAnchorCol = s.selAnchorCol
+	e.syncVisualYOffset()
+}
+
+func (e *SelectableEditor) ClearHistory() {
+	e.history.clear()
+}
+
+func (e *SelectableEditor) Undo() bool {
+	pre, ok := e.history.popUndo()
+	if !ok {
+		return false
+	}
+	e.history.pushRedo(e.snapshotNow())
+	e.restoreSnapshot(pre)
+	e.history.breakGroup()
+	return true
+}
+
+func (e *SelectableEditor) Redo() bool {
+	next, ok := e.history.popRedo()
+	if !ok {
+		return false
+	}
+	e.history.pushUndo(e.snapshotNow())
+	e.restoreSnapshot(next)
+	e.history.breakGroup()
+	return true
+}
+
+// noteMovement breaks the current edit group so the next edit starts a new
+// one. Called on cursor movement, mouse click, scroll, and file switch.
+func (e *SelectableEditor) noteMovement() {
+	e.history.breakGroup()
+}
+
+// recordOp pushes a pre-edit snapshot for a single-entry op group (paste,
+// cut, delete-selection, replace-selection, and model-level ops). Returns
+// the snapshot that was pushed, so callers can verify the op changed content.
+func (e *SelectableEditor) recordOp() snapshot {
+	pre := e.snapshotNow()
+	e.history.recordBefore(editKindOp, pre)
+	return pre
+}
+
+// commitOp pops the op's snapshot back off if the buffer content is unchanged
+// (i.e. the op turned out to be a no-op).
+func (e *SelectableEditor) commitOp(pre snapshot) {
+	if e.Value() == pre.content {
+		e.history.revertLastPush()
+	}
 }
 
 var cursorStyle = lipgloss.NewStyle().

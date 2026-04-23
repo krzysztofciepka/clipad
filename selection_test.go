@@ -298,3 +298,54 @@ func TestHandleKey_HomeClearsSelection(t *testing.T) {
 		t.Errorf("col after Home = %d, want 0", e.cursorCol())
 	}
 }
+
+func TestSelectableEditor_SnapshotRoundTrip(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetValue("hello\nworld")
+	e.moveTo(1, 3)
+	snap := e.snapshotNow()
+	if snap.content != "hello\nworld" {
+		t.Fatalf("snapshot content = %q", snap.content)
+	}
+	if snap.line != 1 || snap.col != 3 {
+		t.Fatalf("snapshot cursor = (%d,%d), want (1,3)", snap.line, snap.col)
+	}
+
+	e.SetValue("changed")
+	e.moveTo(0, 0)
+	e.restoreSnapshot(snap)
+	if e.Value() != "hello\nworld" {
+		t.Fatalf("after restore, Value = %q", e.Value())
+	}
+	if e.Line() != 1 || e.cursorCol() != 3 {
+		t.Fatalf("after restore, cursor = (%d,%d)", e.Line(), e.cursorCol())
+	}
+}
+
+func TestSelectableEditor_UndoRedoEmptyStacksNoOp(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetValue("abc")
+	before := e.Value()
+	if e.Undo() {
+		t.Fatal("Undo on empty history should return false")
+	}
+	if e.Redo() {
+		t.Fatal("Redo on empty history should return false")
+	}
+	if e.Value() != before {
+		t.Fatal("no-op undo/redo should not mutate buffer")
+	}
+}
+
+func TestSelectableEditor_ClearHistoryWipesStacks(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.history.recordBefore(editKindOp, snap("pre"))
+	e.history.pushRedo(snap("redo"))
+	e.ClearHistory()
+	if len(e.history.undoStack) != 0 || len(e.history.redoStack) != 0 {
+		t.Fatal("ClearHistory must empty both stacks")
+	}
+}
