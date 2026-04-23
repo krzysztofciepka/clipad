@@ -545,3 +545,50 @@ func TestSelectableEditor_NewEditAfterUndoClearsRedo(t *testing.T) {
 		t.Fatalf("after new edit + Ctrl+Y, Value = %q, want \"b\"", e.Value())
 	}
 }
+
+func TestSelectableEditor_MouseClickBreaksGroup(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetValue("hello world")
+	e.moveTo(0, 11)
+	typeRunes(&e, "!")
+	if e.Value() != "hello world!" {
+		t.Fatalf("precondition Value = %q", e.Value())
+	}
+	e.StartMouseDrag(0, 0)
+	typeRunes(&e, "X")
+	if e.Value() != "Xhello world!" {
+		t.Fatalf("after second type Value = %q", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("first undo should succeed")
+	}
+	if e.Value() != "hello world!" {
+		t.Fatalf("after 1st undo Value = %q", e.Value())
+	}
+	if !e.Undo() {
+		t.Fatal("second undo should succeed")
+	}
+	if e.Value() != "hello world" {
+		t.Fatalf("after 2nd undo Value = %q", e.Value())
+	}
+}
+
+func TestSelectableEditor_ScrollBreaksGroup(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 3)
+	e.SetValue("line1\nline2\nline3\nline4\nline5")
+	e.moveTo(0, 5)
+	typeRunes(&e, "A")
+	e.ScrollDown(2)
+	typeRunes(&e, "B")
+	if !e.Undo() {
+		t.Fatal("first undo should succeed")
+	}
+	if !e.Undo() {
+		t.Fatal("second undo should succeed")
+	}
+	if e.Value() != "line1\nline2\nline3\nline4\nline5" {
+		t.Fatalf("after 2 undos Value = %q", e.Value())
+	}
+}

@@ -222,6 +222,7 @@ func (e *SelectableEditor) StartMouseDrag(line, col int) {
 	e.selActive = false
 	e.mouseDragging = true
 	e.syncVisualYOffset()
+	e.noteMovement()
 }
 
 // UpdateMouseDrag moves the cursor during a drag. The first position that
@@ -256,6 +257,7 @@ func (e *SelectableEditor) ScrollUp(n int) {
 	}
 	e.adjustViewOffset()
 	e.syncVisualYOffset()
+	e.noteMovement()
 }
 
 // ScrollDown moves cursor and viewport down by n lines.
@@ -265,6 +267,7 @@ func (e *SelectableEditor) ScrollDown(n int) {
 	}
 	e.adjustViewOffset()
 	e.syncVisualYOffset()
+	e.noteMovement()
 }
 
 func (e *SelectableEditor) moveTo(line, col int) {
