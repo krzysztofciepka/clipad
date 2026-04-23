@@ -71,6 +71,8 @@ func helpSections() []helpSection {
 				{"Shift+Arrow", "Select text"},
 				{"Ctrl+C / X / V", "Copy / cut / paste"},
 				{"Ctrl+A", "Select all"},
+				{"Ctrl+Z", "Undo"},
+				{"Ctrl+Shift+Z", "Redo (or Ctrl+Y)"},
 				{"Esc", "Return to tree"},
 			},
 		},

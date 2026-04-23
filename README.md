@@ -74,6 +74,8 @@ On first run, you'll be prompted to set your vault path (the directory where you
 | Key | Action |
 |-----|--------|
 | `Esc` | Return to file tree |
+| `Ctrl+Z` | Undo last edit |
+| `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
 | All other keys | Normal text editing |
 
 ### Mouse
