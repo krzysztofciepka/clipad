@@ -52,7 +52,7 @@ On first run, you'll be prompted to set your vault path (the directory where you
 | `Ctrl+N` | New note (filename derived from first line) |
 | `Ctrl+R` | Find & replace |
 | `Ctrl+P` | Toggle markdown preview |
-| `Ctrl+Y` | Sync with git remote (push/pull) |
+| `F5` | Sync with git remote (push/pull) |
 | `Ctrl+Q` | Quit |
 | `Tab` | Switch panels |
 | `Ctrl+Space` | Open plugin selector |

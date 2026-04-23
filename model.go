@@ -454,7 +454,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+p":
 			return m.togglePreview()
 
-		case "ctrl+y":
+		case "f5":
 			return m.triggerManualGitSync()
 
 		case "ctrl+@":
