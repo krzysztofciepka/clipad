@@ -57,18 +57,32 @@ func (tp *TreePanel) rebuildItems() {
 	}
 }
 
-func (tp *TreePanel) clampOffset() {
-	// Clamp cursor to valid range
-	if tp.cursor >= len(tp.items) {
-		tp.cursor = len(tp.items) - 1
+// itemsHeight returns how many real-item rows fit, accounting for the pinned
+// "Add note" row that always consumes one line of tp.height.
+func (tp *TreePanel) itemsHeight() int {
+	h := tp.height - 1
+	if h < 0 {
+		h = 0
 	}
-	if tp.cursor < 0 {
-		tp.cursor = 0
+	return h
+}
+
+func (tp *TreePanel) clampOffset() {
+	// cursor == -1 means the pinned "Add note" row is selected; it's always
+	// visible at panel-local row 0 regardless of offset, so leave offset alone
+	// for that case. Still clamp offset to its valid range below.
+	if tp.cursor != -1 {
+		if tp.cursor >= len(tp.items) {
+			tp.cursor = len(tp.items) - 1
+		}
+		if tp.cursor < 0 {
+			tp.cursor = 0
+		}
 	}
 
-	// Prevent offset from leaving blank space at the bottom
-	if tp.height > 0 && len(tp.items) > 0 {
-		maxOffset := len(tp.items) - tp.height
+	h := tp.itemsHeight()
+	if h > 0 && len(tp.items) > 0 {
+		maxOffset := len(tp.items) - h
 		if maxOffset < 0 {
 			maxOffset = 0
 		}
@@ -77,15 +91,38 @@ func (tp *TreePanel) clampOffset() {
 		}
 	}
 
-	// Ensure cursor is visible
-	if tp.cursor < tp.offset {
-		tp.offset = tp.cursor
-	}
-	if tp.height > 0 && tp.cursor >= tp.offset+tp.height {
-		tp.offset = tp.cursor - tp.height + 1
+	if tp.cursor != -1 {
+		if tp.cursor < tp.offset {
+			tp.offset = tp.cursor
+		}
+		if h > 0 && tp.cursor >= tp.offset+h {
+			tp.offset = tp.cursor - h + 1
+		}
 	}
 	if tp.offset < 0 {
 		tp.offset = 0
+	}
+}
+
+// scrollBy adjusts offset by delta without touching the cursor and without
+// snapping back to keep the cursor visible. The cursor may end up off-screen;
+// the next moveUp/moveDown will snap the view back via clampOffset.
+func (tp *TreePanel) scrollBy(delta int) {
+	h := tp.itemsHeight()
+	if h <= 0 || len(tp.items) == 0 {
+		tp.offset = 0
+		return
+	}
+	maxOffset := len(tp.items) - h
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	tp.offset += delta
+	if tp.offset < 0 {
+		tp.offset = 0
+	}
+	if tp.offset > maxOffset {
+		tp.offset = maxOffset
 	}
 }
 
