@@ -78,6 +78,8 @@ On first run, you'll be prompted to set your vault path (the directory where you
 | `Ctrl+Q` | Quit |
 | `Tab` | Switch panels |
 | `Ctrl+Space` | Open plugin selector |
+| `Ctrl+G` | Open AI shortcut selector |
+| `Ctrl+L` | Create AI shortcut |
 
 ### File Tree
 
@@ -141,7 +143,9 @@ Plugin config is stored at `~/.config/clipad/plugins/openrouter.toml`.
 
 ### AI Shortcuts
 
-Quick text transformations powered by your configured LLM. Press `Ctrl+Space`, pick a shortcut, and the model rewrites or augments the current note. The diff view lets you accept or reject the change.
+Quick text transformations powered by your configured LLM. Press `Ctrl+G`, pick a shortcut, and the model rewrites or augments the current note. The diff view lets you accept or reject the change.
+
+If text is selected when you trigger a plugin or shortcut, only the selected text is sent to the LLM and the diff/accept flow replaces just that selection. With no selection, the whole note is rewritten as before.
 
 Shortcuts live in `~/.config/clipad/ai_shortcuts.toml` as `[[shortcuts]]` blocks (`name` + `prompt`). On first run the file is seeded with a default library of 23 shortcuts; you can edit, delete, or add entries freely afterward — clipad never overwrites your file.
 
