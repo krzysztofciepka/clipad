@@ -70,11 +70,8 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				shortcut := m.shortcuts[m.shortcutCursor]
 				provider := m.pluginActive.Name()
 				cfg, _ := loadPluginConfig(provider)
-				content := m.editor.Value()
-				m.aiRunOnSelection = m.editor.selActive
-				if m.aiRunOnSelection {
-					content = m.editor.SelectedText()
-				}
+				content, onSelection := m.aiInputContent()
+				m.aiRunOnSelection = onSelection
 				m.pluginDiffOriginal = content
 				m.pluginProcessing = true
 				m.inputMode = inputNone
