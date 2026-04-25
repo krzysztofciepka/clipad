@@ -72,3 +72,33 @@ func TestClampOffset_ToleratesCursorMinusOne(t *testing.T) {
 		t.Errorf("clampOffset moved offset for cursor=-1: %d, want 5", tp.offset)
 	}
 }
+
+func TestNewTreePanel_EmptyTree_CursorOnAddNote(t *testing.T) {
+	tp := newTreePanel(nil, 20, 10)
+	if tp.cursor != -1 {
+		t.Errorf("empty tree: cursor = %d, want -1", tp.cursor)
+	}
+}
+
+func TestNewTreePanel_NonEmpty_CursorOnFirstFile(t *testing.T) {
+	root := &TreeNode{Name: "root", IsDir: true, Expanded: true, Children: []*TreeNode{
+		{Name: "a.md", IsDir: false},
+	}}
+	tp := newTreePanel(root, 20, 10)
+	if tp.cursor != 0 {
+		t.Errorf("non-empty tree: cursor = %d, want 0", tp.cursor)
+	}
+}
+
+func TestRebuildItems_EmptyAfterRebuild_ResetsCursorToMinusOne(t *testing.T) {
+	root := &TreeNode{Name: "root", IsDir: true, Expanded: true, Children: []*TreeNode{
+		{Name: "a.md", IsDir: false},
+	}}
+	tp := newTreePanel(root, 20, 10)
+	tp.cursor = 0
+	tp.root.Children = nil
+	tp.rebuildItems()
+	if tp.cursor != -1 {
+		t.Errorf("after rebuild to empty: cursor = %d, want -1", tp.cursor)
+	}
+}

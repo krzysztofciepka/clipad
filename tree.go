@@ -46,6 +46,9 @@ func newTreePanel(root *TreeNode, width, height int) TreePanel {
 		height: height,
 	}
 	tp.rebuildItems()
+	if len(tp.items) == 0 {
+		tp.cursor = -1
+	}
 	return tp
 }
 
@@ -54,6 +57,9 @@ func (tp *TreePanel) rebuildItems() {
 		tp.items = flattenTree(tp.root, 0)
 	} else {
 		tp.items = nil
+	}
+	if len(tp.items) == 0 {
+		tp.cursor = -1
 	}
 }
 
