@@ -122,3 +122,22 @@ func downloadAsset(ctx context.Context, url, dstPath, expectedDigest, version st
 	}
 	return nil
 }
+
+// renameImpl is os.Rename, exposed as a package-level variable so tests can
+// inject a failure into the rollback path. Production code never reassigns it.
+var renameImpl = os.Rename
+
+func installBinary(srcPath, targetPath string) error {
+	backup := targetPath + ".old"
+	if err := renameImpl(targetPath, backup); err != nil {
+		return fmt.Errorf("cannot move existing binary aside: %w", err)
+	}
+	if err := renameImpl(srcPath, targetPath); err != nil {
+		if rerr := renameImpl(backup, targetPath); rerr != nil {
+			return fmt.Errorf("failed to install new binary: %w; original saved at %s — restore manually", err, backup)
+		}
+		return fmt.Errorf("failed to install new binary: %w", err)
+	}
+	_ = os.Remove(backup)
+	return nil
+}
