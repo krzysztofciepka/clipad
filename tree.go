@@ -133,21 +133,34 @@ func (tp *TreePanel) scrollBy(delta int) {
 }
 
 func (tp *TreePanel) moveUp() {
-	if tp.cursor > 0 {
-		tp.cursor--
-		if tp.cursor < tp.offset {
-			tp.offset = tp.cursor
-		}
+	if tp.cursor == -1 {
+		return
 	}
+	if tp.cursor == 0 {
+		tp.cursor = -1
+		tp.clampOffset()
+		return
+	}
+	tp.cursor--
+	tp.clampOffset()
 }
 
 func (tp *TreePanel) moveDown() {
+	if tp.cursor == -1 {
+		if len(tp.items) > 0 {
+			tp.cursor = 0
+		}
+		tp.clampOffset()
+		return
+	}
 	if tp.cursor < len(tp.items)-1 {
 		tp.cursor++
-		if tp.cursor >= tp.offset+tp.height {
-			tp.offset = tp.cursor - tp.height + 1
-		}
+		tp.clampOffset()
 	}
+}
+
+func (tp *TreePanel) onAddNote() bool {
+	return tp.cursor == -1
 }
 
 func (tp *TreePanel) toggleOrSelect() *TreeNode {

@@ -102,3 +102,103 @@ func TestRebuildItems_EmptyAfterRebuild_ResetsCursorToMinusOne(t *testing.T) {
 		t.Errorf("after rebuild to empty: cursor = %d, want -1", tp.cursor)
 	}
 }
+
+func TestMoveUp_FromFirstFile_LandsOnAddNote(t *testing.T) {
+	root := &TreeNode{Name: "root", IsDir: true, Expanded: true, Children: []*TreeNode{
+		{Name: "a.md", IsDir: false},
+	}}
+	tp := newTreePanel(root, 20, 10)
+	tp.cursor = 0
+	tp.moveUp()
+	if tp.cursor != -1 {
+		t.Errorf("moveUp from cursor=0: cursor = %d, want -1", tp.cursor)
+	}
+}
+
+func TestMoveUp_FromAddNote_NoOp(t *testing.T) {
+	root := &TreeNode{Name: "root", IsDir: true, Expanded: true, Children: []*TreeNode{
+		{Name: "a.md", IsDir: false},
+	}}
+	tp := newTreePanel(root, 20, 10)
+	tp.cursor = -1
+	tp.moveUp()
+	if tp.cursor != -1 {
+		t.Errorf("moveUp from cursor=-1: cursor = %d, want -1", tp.cursor)
+	}
+}
+
+func TestMoveDown_FromAddNote_LandsOnFirstFile(t *testing.T) {
+	root := &TreeNode{Name: "root", IsDir: true, Expanded: true, Children: []*TreeNode{
+		{Name: "a.md", IsDir: false},
+	}}
+	tp := newTreePanel(root, 20, 10)
+	tp.cursor = -1
+	tp.moveDown()
+	if tp.cursor != 0 {
+		t.Errorf("moveDown from cursor=-1: cursor = %d, want 0", tp.cursor)
+	}
+}
+
+func TestMoveDown_FromAddNote_EmptyTree_StaysAtMinusOne(t *testing.T) {
+	tp := newTreePanel(nil, 20, 10)
+	tp.cursor = -1
+	tp.moveDown()
+	if tp.cursor != -1 {
+		t.Errorf("moveDown empty tree: cursor = %d, want -1", tp.cursor)
+	}
+}
+
+func TestOnAddNote(t *testing.T) {
+	tp := newTreePanel(nil, 20, 10)
+	if !tp.onAddNote() {
+		t.Error("onAddNote() = false on empty tree, want true")
+	}
+	root := &TreeNode{Name: "root", IsDir: true, Expanded: true, Children: []*TreeNode{
+		{Name: "a.md", IsDir: false},
+	}}
+	tp = newTreePanel(root, 20, 10)
+	if tp.onAddNote() {
+		t.Error("onAddNote() = true on non-empty tree with cursor=0, want false")
+	}
+}
+
+func TestSelectedNode_OnAddNote_ReturnsNil(t *testing.T) {
+	tp := newTreePanel(nil, 20, 10)
+	if tp.selectedNode() != nil {
+		t.Error("selectedNode() with cursor=-1 should return nil")
+	}
+}
+
+func TestMoveDown_AfterScroll_SnapsViewToCursor(t *testing.T) {
+	tp := makeTreePanel(50, 10)
+	tp.cursor = 0
+	tp.offset = 0
+	tp.scrollBy(20)
+	if tp.offset != 20 {
+		t.Fatalf("setup: scrollBy(20) → offset=%d, want 20", tp.offset)
+	}
+	tp.moveDown()
+	if tp.cursor != 1 {
+		t.Errorf("cursor = %d, want 1", tp.cursor)
+	}
+	if tp.offset != 1 {
+		t.Errorf("offset = %d after moveDown, want 1 (snapped to cursor)", tp.offset)
+	}
+}
+
+func TestMoveUp_AfterScroll_SnapsViewToCursor(t *testing.T) {
+	tp := makeTreePanel(50, 10)
+	tp.cursor = 30
+	tp.offset = 25
+	tp.scrollBy(-25)
+	if tp.offset != 0 {
+		t.Fatalf("setup: scrollBy(-25) → offset=%d, want 0", tp.offset)
+	}
+	tp.moveUp()
+	if tp.cursor != 29 {
+		t.Errorf("cursor = %d, want 29", tp.cursor)
+	}
+	if tp.offset == 0 {
+		t.Errorf("offset = %d, want > 0 (snapped to bring cursor 29 into view)", tp.offset)
+	}
+}
