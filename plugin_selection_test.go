@@ -183,3 +183,33 @@ func TestPluginDiffAccept_NoSelection_ReplacesWholeContent(t *testing.T) {
 		t.Errorf("editor.Value() = %q, want %q", nm.editor.Value(), "totally different")
 	}
 }
+
+func TestPluginDiffReject_OnSelection_LeavesContentUnchanged(t *testing.T) {
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("hello world")
+	m.editor.moveTo(0, 0)
+	m.editor.selAnchorLine, m.editor.selAnchorCol, m.editor.selActive = 0, 0, true
+	m.editor.moveTo(0, 5)
+
+	m.aiRunOnSelection = true
+	m.pluginDiffOriginal = "hello"
+	m.pluginDiffResult = "HOWDY"
+	m.inputMode = inputPluginDiff
+
+	next, _ := m.handlePluginDiff(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	nm := next.(model)
+
+	if nm.editor.Value() != "hello world" {
+		t.Errorf("editor.Value() = %q, want %q (buffer should be unchanged)", nm.editor.Value(), "hello world")
+	}
+	if nm.aiRunOnSelection {
+		t.Error("aiRunOnSelection should be reset to false after reject")
+	}
+	if !nm.editor.selActive {
+		t.Error("selection should still be active after reject (so user can retry)")
+	}
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+}
