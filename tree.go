@@ -26,6 +26,14 @@ var (
 	treeFileStyle  = lipgloss.NewStyle()
 	treeActiveFile = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("156"))
+
+	addNoteStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240"))
+
+	addNoteSelectedStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("236")).
+				Foreground(lipgloss.Color("117")).
+				Bold(true)
 )
 
 type TreePanel struct {
@@ -193,18 +201,37 @@ func (tp TreePanel) View(focused bool) string {
 
 	var b strings.Builder
 
-	end := tp.offset + tp.height
-	if end > len(tp.items) {
-		end = len(tp.items)
-	}
-
 	// Content area width (treePanelStyle has Padding(0,1) = 2 chars horizontal)
 	maxW := tp.width - 2
 	if maxW < 1 {
 		maxW = 1
 	}
 
+	// Pinned "Add note" row at panel-local row 0 (always visible).
+	addNoteText := "+ Add note"
+	if lipgloss.Width(addNoteText) > maxW {
+		addNoteText = ansi.Truncate(addNoteText, maxW, "…")
+	}
+	if tp.cursor == -1 && focused {
+		padded := addNoteText
+		w := lipgloss.Width(padded)
+		if w < maxW {
+			padded += strings.Repeat(" ", maxW-w)
+		}
+		b.WriteString(addNoteSelectedStyle.Render(padded))
+	} else {
+		b.WriteString(addNoteStyle.Render(addNoteText))
+	}
+
+	itemsBudget := tp.itemsHeight()
+
+	end := tp.offset + itemsBudget
+	if end > len(tp.items) {
+		end = len(tp.items)
+	}
+
 	for i := tp.offset; i < end; i++ {
+		b.WriteString("\n")
 		item := tp.items[i]
 		indent := strings.Repeat("  ", item.Depth)
 
@@ -228,7 +255,6 @@ func (tp TreePanel) View(focused bool) string {
 		}
 
 		line := fmt.Sprintf("%s%s%s", indent, icon, name)
-
 		if lipgloss.Width(line) > maxW {
 			line = ansi.Truncate(line, maxW, "…")
 		}
@@ -243,14 +269,11 @@ func (tp TreePanel) View(focused bool) string {
 		}
 
 		b.WriteString(line)
-		if i < end-1 {
-			b.WriteString("\n")
-		}
 	}
 
 	rendered := b.String()
-	lineCount := end - tp.offset
-	for i := lineCount; i < tp.height; i++ {
+	renderedLines := strings.Count(rendered, "\n") + 1
+	for i := renderedLines; i < tp.height; i++ {
 		rendered += "\n"
 	}
 

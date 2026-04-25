@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func makeTreePanel(numItems, height int) TreePanel {
 	tp := TreePanel{height: height, width: 20}
@@ -200,5 +203,26 @@ func TestMoveUp_AfterScroll_SnapsViewToCursor(t *testing.T) {
 	}
 	if tp.offset == 0 {
 		t.Errorf("offset = %d, want > 0 (snapped to bring cursor 29 into view)", tp.offset)
+	}
+}
+
+func TestView_RendersPinnedAddNoteRow(t *testing.T) {
+	tp := newTreePanel(nil, 20, 10)
+	out := tp.View(true)
+	if !strings.Contains(out, "Add note") {
+		t.Errorf("View() does not contain pinned 'Add note' row:\n%s", out)
+	}
+}
+
+func TestView_PinnedRow_VisibleEvenWhenScrolled(t *testing.T) {
+	root := &TreeNode{Name: "root", IsDir: true, Expanded: true, Children: nil}
+	for i := 0; i < 30; i++ {
+		root.Children = append(root.Children, &TreeNode{Name: "f.md", IsDir: false})
+	}
+	tp := newTreePanel(root, 20, 10)
+	tp.scrollBy(20)
+	out := tp.View(false)
+	if !strings.Contains(out, "Add note") {
+		t.Errorf("Add note not rendered after scrolling:\n%s", out)
 	}
 }
