@@ -85,3 +85,54 @@ func TestShortcutSelect_WithSelection_SendsOnlySelection(t *testing.T) {
 		t.Error("aiRunOnSelection = false, want true")
 	}
 }
+
+func TestPluginPrompt_NoSelection_SendsWholeContent(t *testing.T) {
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("hello world")
+
+	plugin := &fakePlugin{name: "fake"}
+	m.pluginActive = plugin
+	if err := savePluginConfig(plugin.Name(), map[string]string{"api_key": "k", "model": "m"}); err != nil {
+		t.Fatalf("savePluginConfig: %v", err)
+	}
+	m.pluginPromptInput.SetValue("rewrite please")
+	m.inputMode = inputPluginPrompt
+
+	next, _ := m.handlePluginPrompt(pressEnter())
+	nm := next.(model)
+
+	if nm.pluginDiffOriginal != "hello world" {
+		t.Errorf("pluginDiffOriginal = %q, want %q", nm.pluginDiffOriginal, "hello world")
+	}
+	if nm.aiRunOnSelection {
+		t.Error("aiRunOnSelection = true, want false")
+	}
+}
+
+func TestPluginPrompt_WithSelection_SendsOnlySelection(t *testing.T) {
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("hello world")
+	m.editor.moveTo(0, 0)
+	m.editor.selAnchorLine, m.editor.selAnchorCol, m.editor.selActive = 0, 0, true
+	m.editor.moveTo(0, 5)
+
+	plugin := &fakePlugin{name: "fake"}
+	m.pluginActive = plugin
+	if err := savePluginConfig(plugin.Name(), map[string]string{"api_key": "k", "model": "m"}); err != nil {
+		t.Fatalf("savePluginConfig: %v", err)
+	}
+	m.pluginPromptInput.SetValue("rewrite please")
+	m.inputMode = inputPluginPrompt
+
+	next, _ := m.handlePluginPrompt(pressEnter())
+	nm := next.(model)
+
+	if nm.pluginDiffOriginal != "hello" {
+		t.Errorf("pluginDiffOriginal = %q, want %q", nm.pluginDiffOriginal, "hello")
+	}
+	if !nm.aiRunOnSelection {
+		t.Error("aiRunOnSelection = false, want true")
+	}
+}

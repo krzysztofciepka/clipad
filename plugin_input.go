@@ -113,7 +113,8 @@ func (m model) handlePluginPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inputMode = inputNone
 			return m, nil
 		}
-		content := m.editor.Value()
+		content, onSelection := m.aiInputContent()
+		m.aiRunOnSelection = onSelection
 		m.pluginDiffOriginal = content
 		m.pluginProcessing = true
 		m.inputMode = inputNone
