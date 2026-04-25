@@ -41,8 +41,8 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, textinput.Blink
 		}
 		content := m.editor.Value()
-		m.shortcutOnSelection = m.editor.selActive
-		if m.shortcutOnSelection {
+		m.aiRunOnSelection = m.editor.selActive
+		if m.aiRunOnSelection {
 			content = m.editor.SelectedText()
 		}
 		m.pluginDiffOriginal = content

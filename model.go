@@ -129,7 +129,7 @@ type model struct {
 	shortcutEditing        int
 	shortcutTempName         string
 	shortcutTempDescription  string
-	shortcutOnSelection      bool
+	aiRunOnSelection         bool
 	shortcutPending          bool // true when shortcut awaits provider config completion
 	shortcutNameInput        textinput.Model
 	shortcutDescriptionInput textinput.Model

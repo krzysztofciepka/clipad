@@ -27,10 +27,10 @@ var (
 func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y":
-		if m.shortcutOnSelection {
+		if m.aiRunOnSelection {
 			// ReplaceSelection records its own op entry.
 			m.editor.ReplaceSelection(m.pluginDiffResult)
-			m.shortcutOnSelection = false
+			m.aiRunOnSelection = false
 		} else {
 			pre := m.editor.recordOp()
 			m.editor.SetValue(m.pluginDiffResult)
@@ -47,7 +47,7 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.editor.Focus()
 		return m, cmd
 	case "n", "esc":
-		m.shortcutOnSelection = false
+		m.aiRunOnSelection = false
 		m.inputMode = inputNone
 		m.pluginActive = nil
 		m.pluginDiffOriginal = ""
