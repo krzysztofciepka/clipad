@@ -18,7 +18,15 @@ Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss,
 
 ### From release
 
-Download the binary from the [latest release](https://github.com/krzysztofciepka/clipad/releases) and place it in your PATH.
+Download the binary from the [latest release](https://github.com/krzysztofciepka/clipad/releases) and place it in your `PATH`.
+
+To upgrade an existing installation in place:
+
+```bash
+clipad --upgrade
+```
+
+This downloads the latest release, verifies its sha256 checksum, and atomically replaces the running binary.
 
 ### From source
 
@@ -34,6 +42,13 @@ cd clipad
 go build -o clipad .
 ```
 
+For a release build that knows its own version (so `--version` and `--upgrade` work correctly):
+
+```bash
+TAG=v0.0.22
+go build -ldflags "-X main.version=$TAG" -o clipad-$TAG-linux-amd64 .
+```
+
 ## Usage
 
 ```bash
@@ -41,6 +56,13 @@ clipad
 ```
 
 On first run, you'll be prompted to set your vault path (the directory where your notes live). The config is stored at `~/.config/clipad/config.toml`.
+
+### CLI flags
+
+| Flag | Action |
+|------|--------|
+| `--version` | Print the embedded version and exit |
+| `--upgrade` | Fetch the latest GitHub release, verify its sha256, and replace the current binary in place. Restart clipad afterwards. Linux/amd64 only. |
 
 ## Keybindings
 
