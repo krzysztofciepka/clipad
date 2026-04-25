@@ -75,6 +75,7 @@ type model struct {
 	treeRoot   *TreeNode
 	treeWidth  int
 	treeHeight int
+	treeHidden bool // per-session toggle for Ctrl+B
 
 	editor       SelectableEditor
 	editorWidth  int
@@ -471,6 +472,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+p":
 			return m.togglePreview()
+
+		case "ctrl+b":
+			m.treeHidden = !m.treeHidden
+			if m.treeHidden && m.activePanel == treePanel {
+				m.activePanel = editorPanel
+				if m.currentFile != "" || m.newNoteDir != "" {
+					cmd := m.editor.Focus()
+					m.recalcLayout()
+					return m, cmd
+				}
+			}
+			m.recalcLayout()
+			return m, nil
 
 		case "f5":
 			return m.triggerManualGitSync()
@@ -1251,8 +1265,9 @@ func (m *model) recalcLayout() {
 
 	const minTreeWidth = 20
 
-	// Hide tree only on extremely narrow terminals where it can't fit
-	if m.width < minTreeWidth+10 {
+	// Hide tree when narrow terminal can't fit it, or when user has toggled
+	// it off via Ctrl+B (per-session, not persisted).
+	if m.treeHidden || m.width < minTreeWidth+10 {
 		m.treeWidth = 0
 		m.editorWidth = m.width
 	} else {
