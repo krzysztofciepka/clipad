@@ -142,6 +142,9 @@ type model struct {
 	gitSyncError    string
 	gitSyncQuitting bool
 	gitRemoteInput  textinput.Model
+
+	// Help modal
+	helpViewport viewport.Model
 }
 
 func newModel(vault string, plugins []Plugin, activeShortcutProvider string) model {
@@ -370,6 +373,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pluginProcessing {
 			return m, nil
 		}
+		if m.inputMode == inputHelp {
+			return handleMouseMsg(m, msg)
+		}
 		if m.inputMode != inputNone {
 			return m, nil
 		}
@@ -497,6 +503,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+?", "ctrl+/", "ctrl+_":
+			vp := viewport.New(m.editorWidth, m.editorHeight)
+			vp.SetContent(helpContent(m.editorWidth))
+			m.helpViewport = vp
 			m.inputMode = inputHelp
 			return m, nil
 
@@ -714,6 +723,7 @@ func (m model) handleHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c", "ctrl+?", "ctrl+/", "ctrl+_", "q":
 		m.inputMode = inputNone
+		return m, nil
 	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
@@ -722,7 +732,9 @@ func (m model) handleHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.helpViewport, cmd = m.helpViewport.Update(msg)
+	return m, cmd
 }
 
 
@@ -1265,6 +1277,11 @@ func (m *model) recalcLayout() {
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
 			m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
 	}
+	if m.inputMode == inputHelp {
+		m.helpViewport.Width = m.editorWidth
+		m.helpViewport.Height = m.editorHeight
+		m.helpViewport.SetContent(helpContent(m.editorWidth))
+	}
 }
 
 func (m model) View() string {
@@ -1284,7 +1301,13 @@ func (m model) View() string {
 
 	var rightView string
 	if m.inputMode == inputHelp {
-		rightView = helpView(m.editorWidth, m.editorHeight)
+		rightView = lipgloss.NewStyle().
+			Width(m.editorWidth).
+			MaxHeight(m.editorHeight).
+			Background(lipgloss.Color("236")).
+			Foreground(lipgloss.Color("252")).
+			Padding(0, 1).
+			Render(m.helpViewport.View())
 	} else if m.inputMode == inputShortcutSelect {
 		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.activeShortcutProvider, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginDiff {

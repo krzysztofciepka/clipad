@@ -235,8 +235,15 @@ func handleTreeMouse(m model, localY int, msg tea.MouseMsg) (tea.Model, tea.Cmd)
 }
 
 // handleMouseMsg is the top-level mouse dispatcher. Callers must ensure
-// m.inputMode == inputNone and !m.pluginProcessing before invoking.
+// !m.pluginProcessing. inputMode must be inputNone except for inputHelp,
+// which routes wheel events to the help viewport.
 func handleMouseMsg(m model, msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.inputMode == inputHelp &&
+		(msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown) {
+		var cmd tea.Cmd
+		m.helpViewport, cmd = m.helpViewport.Update(msg)
+		return m, cmd
+	}
 	hit, localX, localY, ok := hitTestPanel(m.treeWidth, m.width, m.height, msg.X, msg.Y)
 	if !ok {
 		return m, nil

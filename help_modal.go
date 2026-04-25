@@ -8,20 +8,20 @@ import (
 
 var (
 	helpHeaderStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("117")).
-		Bold(true).
-		PaddingLeft(1)
+			Foreground(lipgloss.Color("117")).
+			Bold(true).
+			PaddingLeft(1)
 
 	helpKeyStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("215")).
-		Bold(true)
+			Foreground(lipgloss.Color("215")).
+			Bold(true)
 
 	helpDescStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+			Foreground(lipgloss.Color("252"))
 
 	helpHintStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
-		PaddingLeft(1)
+			Foreground(lipgloss.Color("240")).
+			PaddingLeft(1)
 )
 
 type helpEntry struct {
@@ -42,6 +42,7 @@ var helpSections = []helpSection{
 			{"Ctrl+N", "New note"},
 			{"Ctrl+R", "Find & replace"},
 			{"Ctrl+P", "Toggle markdown preview"},
+			{"Ctrl+B", "Toggle file tree"},
 			{"Ctrl+Q", "Quit"},
 			{"Tab", "Switch panel"},
 			{"Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste"},
@@ -55,7 +56,7 @@ var helpSections = []helpSection{
 		title: "File Tree",
 		entries: []helpEntry{
 			{"Up / Down", "Navigate (previews file)"},
-			{"Enter", "Open file / toggle folder"},
+			{"Enter", "Open file / toggle folder / Add note"},
 			{"Right", "Open file in editor"},
 			{"/", "Fuzzy filter"},
 			{"Ctrl+E", "Rename"},
@@ -75,6 +76,7 @@ var helpSections = []helpSection{
 			{"Enter", "Run shortcut"},
 			{"e", "Edit shortcut"},
 			{"d", "Delete shortcut"},
+			{"Ctrl+↑ / Ctrl+↓", "Reorder shortcut"},
 			{"p", "Cycle AI provider"},
 			{"Esc", "Close"},
 		},
@@ -88,7 +90,7 @@ var helpSections = []helpSection{
 	},
 }
 
-func helpView(width, height int) string {
+func helpContent(width int) string {
 	keyWidth := 0
 	for _, sec := range helpSections {
 		for _, e := range sec.entries {
@@ -115,13 +117,7 @@ func helpView(width, height int) string {
 		}
 	}
 	b.WriteString("\n")
-	b.WriteString(helpHintStyle.Render("Esc to close"))
+	b.WriteString(helpHintStyle.Render("Esc to close · ↑/↓/PgUp/PgDn to scroll"))
 
-	return lipgloss.NewStyle().
-		Width(width).
-		MaxHeight(height).
-		Background(lipgloss.Color("236")).
-		Foreground(lipgloss.Color("252")).
-		Padding(0, 1).
-		Render(b.String())
+	return b.String()
 }
