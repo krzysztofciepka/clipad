@@ -196,7 +196,20 @@ func handleTreeMouse(m model, localY int, msg tea.MouseMsg) (tea.Model, tea.Cmd)
 		if msg.Action != tea.MouseActionPress {
 			return m, nil
 		}
-		row := mousePosToTreeRow(m.tree.offset, localY)
+		// localY == 0 is the pinned Add note row.
+		if localY == 0 {
+			m.tree.cursor = -1
+			m.activePanel = treePanel
+			if m.isDirty() {
+				m.inputMode = inputUnsavedGuard
+				m.pendingAction = pendingNewNote
+				return m, nil
+			}
+			m.startNewNote()
+			return m, nil
+		}
+		// localY >= 1 maps to items[localY-1+offset].
+		row := mousePosToTreeRow(m.tree.offset, localY-1)
 		if row < 0 || row >= len(m.tree.items) {
 			return m, nil
 		}

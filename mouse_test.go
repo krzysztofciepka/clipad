@@ -299,9 +299,10 @@ func newMouseTreeModel(t *testing.T) model {
 
 func TestHandleTreeMouse_ClickFileSelectsAndPreviews(t *testing.T) {
 	m := newMouseTreeModel(t)
-	// Row 0 = "sub" directory, row 1 = "alpha.md"
+	// localY=0 is the pinned Add note row; localY=1 = items[0] ("sub" dir);
+	// localY=2 = items[1] = first file row ("alpha.md").
 	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
-	next, _ := handleTreeMouse(m, 1, press)
+	next, _ := handleTreeMouse(m, 2, press)
 	m = next.(model)
 	if m.tree.cursor != 1 {
 		t.Errorf("tree.cursor = %d, want 1", m.tree.cursor)
@@ -319,14 +320,15 @@ func TestHandleTreeMouse_ClickFileSelectsAndPreviews(t *testing.T) {
 
 func TestHandleTreeMouse_ClickFolderToggles(t *testing.T) {
 	m := newMouseTreeModel(t)
+	// localY=0 is Add note (pinned). localY=1 maps to items[0] (the "sub" dir).
 	node := m.tree.items[0].Node
 	if !node.IsDir {
-		t.Fatalf("expected row 0 to be a directory; got %+v", node)
+		t.Fatalf("expected items[0] to be a directory; got %+v", node)
 	}
 	initialExpanded := node.Expanded
 
 	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
-	next, _ := handleTreeMouse(m, 0, press)
+	next, _ := handleTreeMouse(m, 1, press)
 	m = next.(model)
 	if m.tree.items[0].Node.Expanded == initialExpanded {
 		t.Error("folder expanded state should have toggled")
@@ -421,5 +423,21 @@ func TestHandleTreeMouse_WheelDownScrollsPastCursor(t *testing.T) {
 	}
 	if m.tree.cursor != 0 {
 		t.Errorf("cursor moved during wheel scroll: cursor = %d, want 0", m.tree.cursor)
+	}
+}
+
+func TestHandleTreeMouse_ClickAddNoteRow_TriggersNewNote(t *testing.T) {
+	m := newMouseTreeModel(t)
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleTreeMouse(m, 0, press)
+	m = next.(model)
+	if m.newNoteDir == "" {
+		t.Error("newNoteDir empty after click on Add note row")
+	}
+	if m.activePanel != editorPanel {
+		t.Errorf("activePanel = %v, want editorPanel", m.activePanel)
+	}
+	if m.tree.cursor != -1 {
+		t.Errorf("tree.cursor = %d, want -1", m.tree.cursor)
 	}
 }
