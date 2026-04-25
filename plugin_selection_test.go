@@ -34,3 +34,54 @@ func TestAIInputContent_WithSelection(t *testing.T) {
 		t.Error("onSelection = false, want true")
 	}
 }
+
+type fakePlugin struct {
+	name string
+}
+
+func (f *fakePlugin) Name() string        { return f.name }
+func (f *fakePlugin) Description() string { return "fake" }
+func (f *fakePlugin) ConfigFields() []ConfigField {
+	return []ConfigField{
+		{Key: "api_key", Label: "API Key"},
+		{Key: "model", Label: "Model"},
+	}
+}
+func (f *fakePlugin) Run(content, prompt string, config map[string]string) (string, error) {
+	return "result", nil
+}
+
+func TestShortcutSelect_WithSelection_SendsOnlySelection(t *testing.T) {
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("hello world")
+	m.editor.moveTo(0, 0)
+	m.editor.selAnchorLine, m.editor.selAnchorCol, m.editor.selActive = 0, 0, true
+	m.editor.moveTo(0, 5)
+
+	provider := defaultAIShortcutProvider
+	plugin := pluginByName(m.plugins, provider)
+	if plugin == nil {
+		// newTestModel passes nil plugins; install a fake one keyed by the
+		// default provider so handleShortcutSelect's lookup succeeds.
+		plugin = &fakePlugin{name: provider}
+		m.plugins = []Plugin{plugin}
+	}
+	if err := savePluginConfig(provider, map[string]string{"api_key": "k", "model": "m"}); err != nil {
+		t.Fatalf("savePluginConfig: %v", err)
+	}
+	m.shortcuts = []AIShortcut{{Name: "n", Description: "d", Prompt: "p"}}
+	m.shortcutCursor = 0
+	m.activeShortcutProvider = provider
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(pressEnter())
+	nm := next.(model)
+
+	if nm.pluginDiffOriginal != "hello" {
+		t.Errorf("pluginDiffOriginal = %q, want %q", nm.pluginDiffOriginal, "hello")
+	}
+	if !nm.aiRunOnSelection {
+		t.Error("aiRunOnSelection = false, want true")
+	}
+}

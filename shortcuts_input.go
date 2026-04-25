@@ -40,11 +40,8 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pluginConfigInput = newPluginConfigInput(m.pluginConfigFields[0])
 			return m, textinput.Blink
 		}
-		content := m.editor.Value()
-		m.aiRunOnSelection = m.editor.selActive
-		if m.aiRunOnSelection {
-			content = m.editor.SelectedText()
-		}
+		content, onSelection := m.aiInputContent()
+		m.aiRunOnSelection = onSelection
 		m.pluginDiffOriginal = content
 		m.pluginProcessing = true
 		m.inputMode = inputNone
