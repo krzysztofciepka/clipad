@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestAIInputContent_NoSelection(t *testing.T) {
@@ -134,5 +136,50 @@ func TestPluginPrompt_WithSelection_SendsOnlySelection(t *testing.T) {
 	}
 	if !nm.aiRunOnSelection {
 		t.Error("aiRunOnSelection = false, want true")
+	}
+}
+
+func TestPluginDiffAccept_OnSelection_ReplacesOnlySelection(t *testing.T) {
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("hello world")
+	m.editor.moveTo(0, 0)
+	m.editor.selAnchorLine, m.editor.selAnchorCol, m.editor.selActive = 0, 0, true
+	m.editor.moveTo(0, 5)
+
+	m.aiRunOnSelection = true
+	m.pluginDiffOriginal = "hello"
+	m.pluginDiffResult = "HOWDY"
+	m.inputMode = inputPluginDiff
+
+	next, _ := m.handlePluginDiff(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	nm := next.(model)
+
+	if nm.editor.Value() != "HOWDY world" {
+		t.Errorf("editor.Value() = %q, want %q", nm.editor.Value(), "HOWDY world")
+	}
+	if nm.aiRunOnSelection {
+		t.Error("aiRunOnSelection should be reset to false after accept")
+	}
+	if nm.editor.selActive {
+		t.Error("selection should be cleared after accept")
+	}
+}
+
+func TestPluginDiffAccept_NoSelection_ReplacesWholeContent(t *testing.T) {
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("hello world")
+
+	m.aiRunOnSelection = false
+	m.pluginDiffOriginal = "hello world"
+	m.pluginDiffResult = "totally different"
+	m.inputMode = inputPluginDiff
+
+	next, _ := m.handlePluginDiff(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	nm := next.(model)
+
+	if nm.editor.Value() != "totally different" {
+		t.Errorf("editor.Value() = %q, want %q", nm.editor.Value(), "totally different")
 	}
 }
