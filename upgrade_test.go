@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -282,6 +284,111 @@ func TestInstallBinary_PermissionErrorOnFirstRename(t *testing.T) {
 	}
 	if string(got) != "old" {
 		t.Fatalf("target content changed: %q", got)
+	}
+}
+
+// fakeRelease serves a release JSON pointing at a payload-serving asset URL.
+func fakeRelease(t *testing.T, tag string, payload []byte) string {
+	t.Helper()
+	sum := sha256.Sum256(payload)
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+
+	assetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(payload)
+	}))
+	t.Cleanup(assetSrv.Close)
+
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"tag_name":%q,"assets":[{"name":"clipad-%s-%s-%s","browser_download_url":%q,"size":%d,"digest":%q}]}`,
+			tag, tag, runtime.GOOS, runtime.GOARCH, assetSrv.URL+"/asset", len(payload), digest)
+	}))
+	t.Cleanup(apiSrv.Close)
+	return apiSrv.URL
+}
+
+func TestRunUpgrade_AlreadyLatest(t *testing.T) {
+	requests := 0
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		fmt.Fprint(w, `{"tag_name":"v0.0.42","assets":[]}`)
+	}))
+	defer apiSrv.Close()
+
+	exePath, _ := os.Executable()
+	var out bytes.Buffer
+	if err := runUpgrade(&out, "v0.0.42", apiSrv.URL, exePath); err != nil {
+		t.Fatalf("runUpgrade: %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("API requests = %d, want 1", requests)
+	}
+	if !strings.Contains(out.String(), "up to date") {
+		t.Fatalf("output should mention up-to-date, got: %q", out.String())
+	}
+}
+
+func TestRunUpgrade_DevBuildAlwaysProceeds(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "clipad")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	apiURL := fakeRelease(t, "v0.0.99", []byte("new binary bytes"))
+
+	var out bytes.Buffer
+	if err := runUpgrade(&out, "dev", apiURL, target); err != nil {
+		t.Fatalf("runUpgrade: %v", err)
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if string(got) != "new binary bytes" {
+		t.Fatalf("target not replaced: %q", got)
+	}
+}
+
+func TestRunUpgrade_FullPath(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "clipad")
+	if err := os.WriteFile(target, []byte("v0.0.20-bytes"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	payload := []byte("v0.0.21-bytes")
+	apiURL := fakeRelease(t, "v0.0.21", payload)
+
+	var out bytes.Buffer
+	if err := runUpgrade(&out, "v0.0.20", apiURL, target); err != nil {
+		t.Fatalf("runUpgrade: %v", err)
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("target = %q, want %q", got, payload)
+	}
+	if _, err := os.Stat(target + ".old"); !os.IsNotExist(err) {
+		t.Fatalf(".old should be removed")
+	}
+	if !strings.Contains(out.String(), "v0.0.20") || !strings.Contains(out.String(), "v0.0.21") {
+		t.Fatalf("output should mention both versions, got: %q", out.String())
+	}
+}
+
+func TestRunUpgrade_UnsupportedPlatform(t *testing.T) {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+		t.Skip("running on linux/amd64; unsupported-platform path not reachable here")
+	}
+	var out bytes.Buffer
+	err := runUpgrade(&out, "v0.0.20", "http://unused", "/unused")
+	if err == nil {
+		t.Fatal("expected unsupported-platform error")
+	}
+	if !strings.Contains(err.Error(), "self-upgrade is not supported") {
+		t.Fatalf("error should mention unsupported, got: %v", err)
 	}
 }
 

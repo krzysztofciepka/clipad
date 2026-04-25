@@ -9,7 +9,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 )
 
 const (
@@ -140,4 +143,75 @@ func installBinary(srcPath, targetPath string) error {
 	}
 	_ = os.Remove(backup)
 	return nil
+}
+
+func runUpgrade(out io.Writer, currentVersion, apiBaseURL, exePath string) error {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return fmt.Errorf("self-upgrade is not supported on %s/%s — please reinstall manually", runtime.GOOS, runtime.GOARCH)
+	}
+
+	target, err := filepath.EvalSymlinks(exePath)
+	if err != nil {
+		// EvalSymlinks fails for non-existent paths; fall back to the raw exe
+		// path so synthetic test paths still work.
+		target = exePath
+	}
+	dir := filepath.Dir(target)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	rel, err := fetchLatestRelease(ctx, apiBaseURL, currentVersion)
+	if err != nil {
+		return err
+	}
+
+	if currentVersion != "dev" && rel.TagName == currentVersion {
+		fmt.Fprintf(out, "clipad is up to date (%s).\n", currentVersion)
+		return nil
+	}
+
+	asset, err := pickAsset(rel, runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "Current version: %s\n", currentVersion)
+	fmt.Fprintf(out, "Latest version:  %s\n", rel.TagName)
+	fmt.Fprintf(out, "Downloading %s (%s)...\n", asset.Name, humanSize(asset.Size))
+
+	tmpPath := filepath.Join(dir, fmt.Sprintf(".clipad-upgrade-%d", os.Getpid()))
+	if err := downloadAsset(ctx, asset.BrowserDownloadURL, tmpPath, asset.Digest, currentVersion); err != nil {
+		if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") {
+			return fmt.Errorf("cannot write to %s: %w — re-run with sudo or move clipad to a user-owned path", dir, err)
+		}
+		return err
+	}
+	fmt.Fprintln(out, "Verifying checksum... ok")
+
+	fmt.Fprintf(out, "Installing to %s... ", target)
+	if err := installBinary(tmpPath, target); err != nil {
+		fmt.Fprintln(out, "failed")
+		os.Remove(tmpPath)
+		return err
+	}
+	fmt.Fprintln(out, "ok")
+
+	fmt.Fprintf(out, "Upgraded %s → %s. Restart clipad to use the new version.\n", currentVersion, rel.TagName)
+	return nil
+}
+
+func humanSize(n int64) string {
+	const (
+		kb = 1 << 10
+		mb = 1 << 20
+	)
+	switch {
+	case n >= mb:
+		return fmt.Sprintf("%.1f MB", float64(n)/mb)
+	case n >= kb:
+		return fmt.Sprintf("%.1f KB", float64(n)/kb)
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
