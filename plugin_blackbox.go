@@ -88,10 +88,3 @@ func callBlackbox(url, apiKey, model, systemPrompt, userMessage string) (string,
 
 	return result.Choices[0].Message.Content, nil
 }
-
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
-}
