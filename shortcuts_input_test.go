@@ -107,3 +107,97 @@ func TestShortcutFlow_Description_EscCancels(t *testing.T) {
 		t.Errorf("after esc: shortcutEditing = %d, want -1", nm.shortcutEditing)
 	}
 }
+
+func TestShortcutSelector_CtrlDown_SwapsAndPersists(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{
+		{Name: "first", Description: "d1", Prompt: "p1"},
+		{Name: "second", Description: "d2", Prompt: "p2"},
+	}
+	if err := saveShortcuts(m.shortcuts); err != nil {
+		t.Fatalf("seed save failed: %v", err)
+	}
+	m.shortcutCursor = 0
+	m.inputMode = inputShortcutSelect
+
+	ctrlDown := tea.KeyMsg{Type: tea.KeyCtrlDown}
+	next, _ := m.handleShortcutSelect(ctrlDown)
+	nm := next.(model)
+	if nm.shortcuts[0].Name != "second" || nm.shortcuts[1].Name != "first" {
+		t.Errorf("order = [%s, %s], want [second, first]",
+			nm.shortcuts[0].Name, nm.shortcuts[1].Name)
+	}
+	if nm.shortcutCursor != 1 {
+		t.Errorf("cursor = %d, want 1", nm.shortcutCursor)
+	}
+	loaded, err := loadShortcuts()
+	if err != nil {
+		t.Fatalf("loadShortcuts: %v", err)
+	}
+	if loaded[0].Name != "second" || loaded[1].Name != "first" {
+		t.Errorf("on-disk order = [%s, %s], want [second, first]",
+			loaded[0].Name, loaded[1].Name)
+	}
+}
+
+func TestShortcutSelector_CtrlUp_SwapsAndPersists(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{
+		{Name: "first", Description: "d1", Prompt: "p1"},
+		{Name: "second", Description: "d2", Prompt: "p2"},
+	}
+	if err := saveShortcuts(m.shortcuts); err != nil {
+		t.Fatalf("seed save failed: %v", err)
+	}
+	m.shortcutCursor = 1
+	m.inputMode = inputShortcutSelect
+
+	ctrlUp := tea.KeyMsg{Type: tea.KeyCtrlUp}
+	next, _ := m.handleShortcutSelect(ctrlUp)
+	nm := next.(model)
+	if nm.shortcuts[0].Name != "second" || nm.shortcuts[1].Name != "first" {
+		t.Errorf("order = [%s, %s], want [second, first]",
+			nm.shortcuts[0].Name, nm.shortcuts[1].Name)
+	}
+	if nm.shortcutCursor != 0 {
+		t.Errorf("cursor = %d, want 0", nm.shortcutCursor)
+	}
+}
+
+func TestShortcutSelector_CtrlUp_AtTop_NoOp(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{
+		{Name: "first"},
+		{Name: "second"},
+	}
+	m.shortcutCursor = 0
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyCtrlUp})
+	nm := next.(model)
+	if nm.shortcuts[0].Name != "first" {
+		t.Errorf("ctrl+up at top should not swap; got %s", nm.shortcuts[0].Name)
+	}
+	if nm.shortcutCursor != 0 {
+		t.Errorf("cursor = %d, want 0", nm.shortcutCursor)
+	}
+}
+
+func TestShortcutSelector_CtrlDown_AtBottom_NoOp(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{
+		{Name: "first"},
+		{Name: "second"},
+	}
+	m.shortcutCursor = 1
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyCtrlDown})
+	nm := next.(model)
+	if nm.shortcuts[1].Name != "second" {
+		t.Errorf("ctrl+down at bottom should not swap; got %s", nm.shortcuts[1].Name)
+	}
+	if nm.shortcutCursor != 1 {
+		t.Errorf("cursor = %d, want 1", nm.shortcutCursor)
+	}
+}

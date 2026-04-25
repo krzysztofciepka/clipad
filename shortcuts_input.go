@@ -15,6 +15,24 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.shortcutCursor < len(m.shortcuts)-1 {
 			m.shortcutCursor++
 		}
+	case "ctrl+up":
+		if m.shortcutCursor > 0 {
+			i := m.shortcutCursor
+			m.shortcuts[i-1], m.shortcuts[i] = m.shortcuts[i], m.shortcuts[i-1]
+			m.shortcutCursor--
+			if err := saveShortcuts(m.shortcuts); err != nil {
+				m.errMsg = "Failed to save shortcuts: " + err.Error()
+			}
+		}
+	case "ctrl+down":
+		if m.shortcutCursor < len(m.shortcuts)-1 {
+			i := m.shortcutCursor
+			m.shortcuts[i], m.shortcuts[i+1] = m.shortcuts[i+1], m.shortcuts[i]
+			m.shortcutCursor++
+			if err := saveShortcuts(m.shortcuts); err != nil {
+				m.errMsg = "Failed to save shortcuts: " + err.Error()
+			}
+		}
 	case "enter":
 		if len(m.shortcuts) == 0 || m.shortcutCursor >= len(m.shortcuts) {
 			return m, nil
