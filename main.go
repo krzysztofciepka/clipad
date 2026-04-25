@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// version is overridden at release build time via:
+//   go build -ldflags "-X main.version=vX.Y.Z" .
+var version = "dev"
 
 type setupModel struct {
 	input  textinput.Model
@@ -92,6 +97,31 @@ func (m setupModel) View() string {
 }
 
 func main() {
+	var (
+		showVersion bool
+		doUpgrade   bool
+	)
+	flag.BoolVar(&showVersion, "version", false, "print version and exit")
+	flag.BoolVar(&doUpgrade, "upgrade", false, "fetch the latest release and replace this binary")
+	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("clipad %s\n", version)
+		return
+	}
+	if doUpgrade {
+		exe, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot determine clipad binary path: %v\n", err)
+			os.Exit(1)
+		}
+		if err := runUpgrade(os.Stderr, version, "https://api.github.com", exe); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	cfg, err := loadConfig()
 	if err != nil {
 		setup := newSetupModel()
