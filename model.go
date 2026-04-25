@@ -223,6 +223,18 @@ func (m model) isDirty() bool {
 	return m.editor.Value() != m.cleanContent
 }
 
+// aiInputContent returns the content to feed to an AI run plus a flag the
+// diff-accept path uses to decide whether to replace just the selection or
+// the whole buffer. selActive is sufficient as the "has selection" predicate
+// because the editor already clears it on no-op clicks and on cursor moves
+// without shift, so a true value implies a non-empty range.
+func (m *model) aiInputContent() (content string, onSelection bool) {
+	if m.editor.selActive {
+		return m.editor.SelectedText(), true
+	}
+	return m.editor.Value(), false
+}
+
 func (m model) Init() tea.Cmd {
 	return tea.Batch(textarea.Blink, watchVault(m.vault), autoSaveTick(), gitSyncCheckImmediate())
 }
