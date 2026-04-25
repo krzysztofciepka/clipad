@@ -538,6 +538,9 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.tree.moveDown()
 		m.previewSelectedFile()
 	case "right":
+		if m.tree.onAddNote() {
+			return m, nil
+		}
 		if m.currentFile != "" {
 			m.activePanel = editorPanel
 			m.editorMode = modeEdit
@@ -545,6 +548,15 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "enter":
+		if m.tree.onAddNote() {
+			if m.isDirty() {
+				m.inputMode = inputUnsavedGuard
+				m.pendingAction = pendingNewNote
+				return m, nil
+			}
+			m.startNewNote()
+			return m, nil
+		}
 		node := m.tree.toggleOrSelect()
 		if node != nil {
 			if m.isDirty() {
