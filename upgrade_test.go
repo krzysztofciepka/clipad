@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -131,5 +135,77 @@ func TestFetchLatestRelease_BadJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "parse release metadata") {
 		t.Fatalf("error should mention parse failure, got: %v", err)
+	}
+}
+
+func TestDownloadAsset_Success(t *testing.T) {
+	payload := []byte("fake clipad binary contents")
+	sum := sha256.Sum256(payload)
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(payload)
+	}))
+	defer srv.Close()
+
+	dst := filepath.Join(t.TempDir(), "clipad.new")
+	if err := downloadAsset(context.Background(), srv.URL, dst, digest, "vTest"); err != nil {
+		t.Fatalf("downloadAsset: %v", err)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read dst: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("payload mismatch")
+	}
+
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("mode = %v, want 0755", info.Mode().Perm())
+	}
+}
+
+func TestDownloadAsset_404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	dst := filepath.Join(t.TempDir(), "clipad.new")
+	err := downloadAsset(context.Background(), srv.URL, dst, "sha256:0", "vTest")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Fatalf("error should mention status, got: %v", err)
+	}
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Fatalf("temp file should not exist, stat err = %v", err)
+	}
+}
+
+func TestDownloadAsset_DigestMismatch(t *testing.T) {
+	payload := []byte("payload")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(payload)
+	}))
+	defer srv.Close()
+
+	wrong := "sha256:" + strings.Repeat("0", 64)
+	dst := filepath.Join(t.TempDir(), "clipad.new")
+	err := downloadAsset(context.Background(), srv.URL, dst, wrong, "vTest")
+	if err == nil {
+		t.Fatal("expected checksum error")
+	}
+	if !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("error should mention checksum mismatch, got: %v", err)
+	}
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Fatalf("temp file should be cleaned up on mismatch, stat err = %v", err)
 	}
 }
