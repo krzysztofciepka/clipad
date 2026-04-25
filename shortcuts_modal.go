@@ -87,7 +87,7 @@ func shortcutSelectorView(shortcuts []AIShortcut, cursor int, provider string, w
 
 	items := strings.Join(rows, "\n")
 	providerLine := shortcutHintStyle.Render("Provider: " + provider + "  (p:cycle)")
-	hint := shortcutHintStyle.Render("Enter:run  e:edit  d:delete  Esc:close")
+	hint := shortcutHintStyle.Render("Enter:run  e:edit  d:delete  Ctrl+↑/↓:reorder  Esc:close")
 	content := items + "\n" + providerLine + "\n" + hint
 
 	return lipgloss.NewStyle().
