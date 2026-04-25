@@ -212,15 +212,10 @@ func handleTreeMouse(m model, localY int, msg tea.MouseMsg) (tea.Model, tea.Cmd)
 		}
 		return m, nil
 	case tea.MouseButtonWheelUp:
-		m.tree.offset -= 3
-		if m.tree.offset < 0 {
-			m.tree.offset = 0
-		}
-		m.tree.clampOffset()
+		m.tree.scrollBy(-3)
 		return m, nil
 	case tea.MouseButtonWheelDown:
-		m.tree.offset += 3
-		m.tree.clampOffset()
+		m.tree.scrollBy(3)
 		return m, nil
 	}
 	return m, nil

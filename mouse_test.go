@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -396,5 +397,29 @@ func TestHandleMouseMsg_RoutesToEditor(t *testing.T) {
 	m = next.(model)
 	if m.activePanel != editorPanel {
 		t.Errorf("activePanel = %v, want editorPanel", m.activePanel)
+	}
+}
+
+func TestHandleTreeMouse_WheelDownScrollsPastCursor(t *testing.T) {
+	m := newMouseTestModel(t)
+	for i := 0; i < 50; i++ {
+		os.WriteFile(filepath.Join(m.vault, fmt.Sprintf("f%02d.md", i)), []byte("x"), 0o644)
+	}
+	m.refreshTree()
+	m.tree.height = 10
+	m.tree.width = 20
+	m.tree.cursor = 0
+	m.tree.offset = 0
+
+	wheel := tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress}
+	for i := 0; i < 5; i++ {
+		next, _ := handleTreeMouse(m, 0, wheel)
+		m = next.(model)
+	}
+	if m.tree.offset < 9 {
+		t.Errorf("after 5 wheel-down events: offset = %d, want >= 9 (decoupled from cursor)", m.tree.offset)
+	}
+	if m.tree.cursor != 0 {
+		t.Errorf("cursor moved during wheel scroll: cursor = %d, want 0", m.tree.cursor)
 	}
 }
