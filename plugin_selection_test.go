@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -49,8 +50,12 @@ func (f *fakePlugin) ConfigFields() []ConfigField {
 		{Key: "model", Label: "Model"},
 	}
 }
-func (f *fakePlugin) Run(content, prompt string, config map[string]string) (string, error) {
-	return "result", nil
+func (f *fakePlugin) Run(ctx context.Context, content, prompt string, config map[string]string) (<-chan string, <-chan error) {
+	chunks := make(chan string)
+	errs := make(chan error)
+	close(chunks)
+	close(errs)
+	return chunks, errs
 }
 
 func TestShortcutSelect_WithSelection_SendsOnlySelection(t *testing.T) {

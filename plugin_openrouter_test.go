@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -28,7 +31,7 @@ func TestOpenRouterPlugin_ConfigFields(t *testing.T) {
 	}
 }
 
-func TestOpenRouterPlugin_Run_Success(t *testing.T) {
+func TestOpenRouterPlugin_Run_StreamingSmoke(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("method = %q, want POST", r.Method)
@@ -36,44 +39,58 @@ func TestOpenRouterPlugin_Run_Success(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Errorf("auth header = %q", r.Header.Get("Authorization"))
 		}
-
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
 		if req["model"] != "openai/gpt-4o" {
 			t.Errorf("model = %v, want openai/gpt-4o", req["model"])
 		}
+		if req["stream"] != true {
+			t.Errorf("stream = %v, want true", req["stream"])
+		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"choices": []map[string]interface{}{
-				{"message": map[string]string{"content": "Translated content"}},
-			},
-		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Trans\"}}]}\n\n")
+		flusher.Flush()
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"lated\"}}]}\n\n")
+		flusher.Flush()
+		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer server.Close()
 
 	p := &OpenRouterPlugin{BaseURL: server.URL}
 	cfg := map[string]string{"api_key": "test-key", "model": "openai/gpt-4o"}
-	result, err := p.Run("Original content", "Translate to Polish", cfg)
+	chunks, errs := p.Run(context.Background(), "Original", "Translate", cfg)
+	got, err := drainStream(t, chunks, errs)
 	if err != nil {
-		t.Fatalf("Run() error: %v", err)
+		t.Fatalf("drainStream error: %v", err)
 	}
-	if result != "Translated content" {
-		t.Errorf("Run() = %q, want %q", result, "Translated content")
+	if got != "Translated" {
+		t.Errorf("got %q, want %q", got, "Translated")
 	}
 }
 
-func TestOpenRouterPlugin_Run_Error(t *testing.T) {
+func TestOpenRouterPlugin_Run_AuthError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error": "invalid api key"}`))
+		fmt.Fprint(w, `{"error":"invalid api key"}`)
 	}))
 	defer server.Close()
 
 	p := &OpenRouterPlugin{BaseURL: server.URL}
-	cfg := map[string]string{"api_key": "bad-key", "model": "openai/gpt-4o"}
-	_, err := p.Run("content", "prompt", cfg)
+	cfg := map[string]string{"api_key": "bad", "model": "openai/gpt-4o"}
+	chunks, errs := p.Run(context.Background(), "c", "p", cfg)
+	got, err := drainStream(t, chunks, errs)
+	if got != "" {
+		t.Errorf("got chunks %q, want none", got)
+	}
 	if err == nil {
-		t.Error("expected error for 401 response, got nil")
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Errorf("err = %v, want substring 401", err)
 	}
 }

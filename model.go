@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -123,6 +124,8 @@ type model struct {
 	pluginDiffViewL    viewport.Model
 	pluginDiffViewR    viewport.Model
 	pluginProcessing   bool
+	pluginCancel       context.CancelFunc
+	activeChunks       <-chan string
 
 	// AI shortcuts
 	shortcuts              []AIShortcut
@@ -328,46 +331,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gitSyncFlash = ""
 		return m, nil
 
-	case pluginResultMsg:
-		m.pluginProcessing = false
-		if msg.err != nil {
-			m.errMsg = "Plugin error: " + msg.err.Error()
-			m.inputMode = inputNone
-			m.pluginActive = nil
-			m.pluginDiffOriginal = ""
-			return m, nil
+	case pluginChunkMsg:
+		if msg.chunks != m.activeChunks {
+			return m, nil // stale: superseded or cancelled stream
 		}
-		if msg.result == m.pluginDiffOriginal {
+		m.pluginDiffResult += msg.delta
+		halfWidth := m.editorWidth / 2
+		rightWidth := m.editorWidth - halfWidth - 3
+		if rightWidth < 1 {
+			rightWidth = 1
+		}
+		m.pluginDiffViewR.SetContent(wordWrap(m.pluginDiffResult, rightWidth))
+		m.pluginDiffViewR.GotoBottom()
+		return m, readNextChunk(msg.chunks, msg.errs)
+
+	case pluginDoneMsg:
+		if msg.chunks != m.activeChunks {
+			return m, nil // stale
+		}
+		m.pluginProcessing = false
+		m.pluginCancel = nil
+		m.activeChunks = nil
+		if m.pluginDiffResult == m.pluginDiffOriginal || m.pluginDiffResult == "" {
 			m.errMsg = "No changes"
 			m.inputMode = inputNone
 			m.pluginActive = nil
 			m.pluginDiffOriginal = ""
-			return m, nil
+			m.pluginDiffResult = ""
 		}
-		m.pluginDiffResult = msg.result
-		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
-			m.pluginDiffOriginal, msg.result, m.editorWidth, m.editorHeight)
-		m.inputMode = inputPluginDiff
 		return m, nil
 
-	case shortcutResultMsg:
+	case pluginErrMsg:
+		if msg.chunks != m.activeChunks {
+			return m, nil // stale
+		}
 		m.pluginProcessing = false
-		if msg.err != nil {
-			m.errMsg = "Shortcut error: " + msg.err.Error()
-			m.inputMode = inputNone
-			m.pluginDiffOriginal = ""
-			return m, nil
-		}
-		if msg.result == m.pluginDiffOriginal {
-			m.errMsg = "No changes"
-			m.inputMode = inputNone
-			m.pluginDiffOriginal = ""
-			return m, nil
-		}
-		m.pluginDiffResult = msg.result
-		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
-			m.pluginDiffOriginal, msg.result, m.editorWidth, m.editorHeight)
-		m.inputMode = inputPluginDiff
+		m.pluginCancel = nil
+		m.activeChunks = nil
+		m.errMsg = "Plugin error: " + msg.err.Error()
+		m.inputMode = inputNone
+		m.pluginActive = nil
+		m.pluginDiffOriginal = ""
+		m.pluginDiffResult = ""
 		return m, nil
 
 	case tea.MouseMsg:
@@ -384,6 +389,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.pluginProcessing {
+			switch msg.String() {
+			case "esc":
+				if m.pluginCancel != nil {
+					m.pluginCancel()
+					m.pluginCancel = nil
+				}
+				m.pluginProcessing = false
+				m.activeChunks = nil
+				m.inputMode = inputNone
+				m.pluginActive = nil
+				m.pluginDiffOriginal = ""
+				m.pluginDiffResult = ""
+				return m, nil
+			case "ctrl+q":
+				if m.isDirty() {
+					m.inputMode = inputUnsavedGuard
+					m.pendingAction = pendingQuit
+					return m, nil
+				}
+				return m, tea.Quit
+			}
 			return m, nil
 		}
 

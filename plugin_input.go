@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -73,9 +75,15 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				content, onSelection := m.aiInputContent()
 				m.aiRunOnSelection = onSelection
 				m.pluginDiffOriginal = content
+				m.pluginDiffResult = ""
 				m.pluginProcessing = true
-				m.inputMode = inputNone
-				return m, runShortcutCmd(shortcut, content, provider, cfg)
+				ctx, cancel := context.WithCancel(context.Background())
+				m.pluginCancel = cancel
+				m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
+				m.inputMode = inputPluginDiff
+				chunks, errs := runShortcutStream(ctx, shortcut, content, provider, cfg)
+				m.activeChunks = chunks
+				return m, streamPluginCmd(chunks, errs)
 			}
 			m.inputMode = inputPluginPrompt
 			m.pluginPromptInput.SetValue("")
@@ -116,9 +124,15 @@ func (m model) handlePluginPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		content, onSelection := m.aiInputContent()
 		m.aiRunOnSelection = onSelection
 		m.pluginDiffOriginal = content
+		m.pluginDiffResult = ""
 		m.pluginProcessing = true
-		m.inputMode = inputNone
-		return m, runPluginCmd(m.pluginActive, content, prompt, cfg)
+		ctx, cancel := context.WithCancel(context.Background())
+		m.pluginCancel = cancel
+		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
+		m.inputMode = inputPluginDiff
+		chunks, errs := m.pluginActive.Run(ctx, content, prompt, cfg)
+		m.activeChunks = chunks
+		return m, streamPluginCmd(chunks, errs)
 	case "esc":
 		m.inputMode = inputNone
 		m.pluginActive = nil

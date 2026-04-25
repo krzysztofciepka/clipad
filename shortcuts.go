@@ -1,12 +1,12 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
@@ -21,11 +21,6 @@ type AIShortcut struct {
 
 type aiShortcutsConfig struct {
 	Shortcuts []AIShortcut `toml:"shortcuts"`
-}
-
-type shortcutResultMsg struct {
-	result string
-	err    error
 }
 
 func shortcutsPath() string {
@@ -73,18 +68,17 @@ func saveShortcuts(shortcuts []AIShortcut) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func runShortcutCmd(shortcut AIShortcut, content, provider string, config map[string]string) tea.Cmd {
-	return func() tea.Msg {
-		systemPrompt := "You are a text processing assistant. Apply the following instruction to the provided text. Return ONLY the processed text, nothing else."
-		userMessage := fmt.Sprintf("Instruction: %s\n\nText:\n%s", shortcut.Prompt, content)
-		var result string
-		var err error
-		switch provider {
-		case "openrouter":
-			result, err = callOpenRouter(defaultOpenRouterURL, config["api_key"], config["model"], systemPrompt, userMessage)
-		default:
-			result, err = callBlackbox(defaultBlackboxURL, config["api_key"], config["model"], systemPrompt, userMessage)
-		}
-		return shortcutResultMsg{result: result, err: err}
+// runShortcutStream issues a streaming chat-completion using the shortcut's
+// prompt as the user instruction. Returns channels that mirror Plugin.Run.
+func runShortcutStream(ctx context.Context, shortcut AIShortcut, content, provider string, config map[string]string) (<-chan string, <-chan error) {
+	systemPrompt := "You are a text processing assistant. Apply the following instruction to the provided text. Return ONLY the processed text, nothing else."
+	userMessage := fmt.Sprintf("Instruction: %s\n\nText:\n%s", shortcut.Prompt, content)
+	var url string
+	switch provider {
+	case "openrouter":
+		url = defaultOpenRouterURL
+	default:
+		url = defaultBlackboxURL
 	}
+	return streamChatCompletion(ctx, url, config["api_key"], config["model"], systemPrompt, userMessage)
 }

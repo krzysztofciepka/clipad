@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,18 +21,51 @@ type Plugin interface {
 	Name() string
 	Description() string
 	ConfigFields() []ConfigField
-	Run(content string, prompt string, config map[string]string) (string, error)
+	Run(ctx context.Context, content, prompt string, cfg map[string]string) (<-chan string, <-chan error)
 }
 
-type pluginResultMsg struct {
-	result string
+// pluginChunkMsg carries one streamed delta plus the channels needed to
+// re-queue the read. The chunks field also serves as the identity token used
+// to discard messages from a superseded stream.
+type pluginChunkMsg struct {
+	chunks <-chan string
+	errs   <-chan error
+	delta  string
+}
+
+// pluginDoneMsg fires when the chunks channel closes cleanly.
+type pluginDoneMsg struct {
+	chunks <-chan string
+}
+
+// pluginErrMsg fires when the errs channel yields a non-nil error.
+type pluginErrMsg struct {
+	chunks <-chan string
 	err    error
 }
 
-func runPluginCmd(p Plugin, content, prompt string, cfg map[string]string) tea.Cmd {
+// streamPluginCmd is the entry point: it returns the first read.
+func streamPluginCmd(chunks <-chan string, errs <-chan error) tea.Cmd {
+	return readNextChunk(chunks, errs)
+}
+
+// readNextChunk reads one value from chunks (or an error from errs) and
+// returns a tea.Msg. The model handler re-invokes readNextChunk to keep
+// draining the stream.
+func readNextChunk(chunks <-chan string, errs <-chan error) tea.Cmd {
 	return func() tea.Msg {
-		result, err := p.Run(content, prompt, cfg)
-		return pluginResultMsg{result: result, err: err}
+		select {
+		case d, ok := <-chunks:
+			if !ok {
+				return pluginDoneMsg{chunks: chunks}
+			}
+			return pluginChunkMsg{chunks: chunks, errs: errs, delta: d}
+		case err := <-errs:
+			if err != nil {
+				return pluginErrMsg{chunks: chunks, err: err}
+			}
+			return pluginDoneMsg{chunks: chunks}
+		}
 	}
 }
 
