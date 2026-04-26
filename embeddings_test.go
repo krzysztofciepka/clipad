@@ -95,6 +95,42 @@ func TestOpenRouterEmbeddings_Batches(t *testing.T) {
 	}
 }
 
+func TestOllamaEmbeddings_HappyPath(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var req struct {
+			Model  string `json:"model"`
+			Prompt string `json:"prompt"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		var v []float32
+		if req.Prompt == "alpha" {
+			v = []float32{1, 0, 0}
+		} else {
+			v = []float32{0, 1, 0}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string][]float32{"embedding": v})
+	}))
+	defer srv.Close()
+
+	e := &OllamaEmbeddings{BaseURL: srv.URL, ModelName: "nomic-embed-text"}
+	got, err := e.Embed(context.Background(), []string{"alpha", "beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Errorf("HTTP calls = %d, want 2 (one per text)", calls)
+	}
+	if len(got) != 2 || got[0][0] != 1 || got[1][1] != 1 {
+		t.Errorf("vectors = %v", got)
+	}
+	if e.Dim() != 3 {
+		t.Errorf("Dim() = %d, want 3", e.Dim())
+	}
+}
+
 func TestOpenRouterEmbeddings_AuthError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

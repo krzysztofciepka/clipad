@@ -109,7 +109,48 @@ type OllamaEmbeddings struct {
 func (e *OllamaEmbeddings) Model() string { return e.ModelName }
 func (e *OllamaEmbeddings) Dim() int      { return e.dim }
 func (e *OllamaEmbeddings) Embed(ctx context.Context, texts []string) ([][]float32, error) {
-	return nil, fmt.Errorf("OllamaEmbeddings.Embed not implemented")
+	if len(texts) == 0 {
+		return nil, nil
+	}
+	base := e.BaseURL
+	if base == "" {
+		base = "http://localhost:11434"
+	}
+	url := base + "/api/embeddings"
+	out := make([][]float32, 0, len(texts))
+	for _, t := range texts {
+		body, err := json.Marshal(map[string]string{"model": e.ModelName, "prompt": t})
+		if err != nil {
+			return nil, fmt.Errorf("marshal: %w", err)
+		}
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("ollama: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("ollama embeddings (HTTP %d): %s", resp.StatusCode, truncate(string(respBody), 200))
+		}
+		var parsed struct {
+			Embedding []float32 `json:"embedding"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("decode: %w", err)
+		}
+		resp.Body.Close()
+		out = append(out, parsed.Embedding)
+	}
+	if len(out) > 0 {
+		e.dim = len(out[0])
+	}
+	return out, nil
 }
 
 // newEmbeddingClient picks the implementation based on cfg.EmbeddingProvider.
