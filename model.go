@@ -21,6 +21,7 @@ type panel int
 const (
 	treePanel panel = iota
 	editorPanel
+	chatPanelHit // used only for mouse hit-testing; never assigned to m.activePanel
 )
 
 type editorMode int

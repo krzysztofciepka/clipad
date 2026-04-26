@@ -12,24 +12,30 @@ import (
 
 func TestHitTestPanel(t *testing.T) {
 	tests := []struct {
-		name                           string
-		treeWidth, width, height, x, y int
-		wantHit                        panel
-		wantLocalX, wantLocalY         int
-		wantOK                         bool
+		name                                      string
+		treeWidth, chatWidth, width, height, x, y int
+		wantHit                                   panel
+		wantLocalX, wantLocalY                    int
+		wantOK                                    bool
 	}{
-		{"tree area", 20, 100, 30, 5, 5, treePanel, 5, 5, true},
-		{"border column rejected", 20, 100, 30, 20, 5, 0, 0, 0, false},
-		{"editor area", 20, 100, 30, 25, 5, editorPanel, 4, 5, true},
-		{"status bar row rejected", 20, 100, 30, 5, 29, 0, 0, 0, false},
-		{"out of bounds negative", 20, 100, 30, -1, 5, 0, 0, 0, false},
-		{"out of bounds right", 20, 100, 30, 100, 5, 0, 0, 0, false},
-		{"out of bounds below", 20, 100, 30, 5, 30, 0, 0, 0, false},
-		{"narrow terminal treats all as editor", 0, 20, 30, 5, 5, editorPanel, 5, 5, true},
+		{"tree area", 20, 0, 100, 30, 5, 5, treePanel, 5, 5, true},
+		{"border column rejected", 20, 0, 100, 30, 20, 5, 0, 0, 0, false},
+		{"editor area", 20, 0, 100, 30, 25, 5, editorPanel, 4, 5, true},
+		{"status bar row rejected", 20, 0, 100, 30, 5, 29, 0, 0, 0, false},
+		{"out of bounds negative", 20, 0, 100, 30, -1, 5, 0, 0, 0, false},
+		{"out of bounds right", 20, 0, 100, 30, 100, 5, 0, 0, 0, false},
+		{"out of bounds below", 20, 0, 100, 30, 5, 30, 0, 0, 0, false},
+		{"narrow terminal treats all as editor", 0, 0, 20, 30, 5, 5, editorPanel, 5, 5, true},
+		// chat panel: width=100, treeWidth=20, chatWidth=40 → chat starts at x=60.
+		// columns 0..19 = tree, 20 = tree-border, 21..58 = editor, 59 = chat-border, 60..99 = chat
+		{"chat area first col", 20, 40, 100, 30, 60, 5, chatPanelHit, 0, 5, true},
+		{"chat area middle", 20, 40, 100, 30, 75, 5, chatPanelHit, 15, 5, true},
+		{"chat-left border rejected", 20, 40, 100, 30, 59, 5, 0, 0, 0, false},
+		{"editor area shrunk by chat", 20, 40, 100, 30, 25, 5, editorPanel, 4, 5, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hit, lx, ly, ok := hitTestPanel(tt.treeWidth, tt.width, tt.height, tt.x, tt.y)
+			hit, lx, ly, ok := hitTestPanel(tt.treeWidth, tt.chatWidth, tt.width, tt.height, tt.x, tt.y)
 			if ok != tt.wantOK {
 				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
 			}

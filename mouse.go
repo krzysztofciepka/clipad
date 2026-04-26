@@ -10,12 +10,25 @@ import (
 // hitTestPanel maps a terminal mouse coordinate to the panel it landed in.
 // The status-bar row and any out-of-bounds coordinates return ok=false.
 // When treeWidth == 0 (narrow terminal), the full width is treated as editor.
-func hitTestPanel(treeWidth, width, height, x, y int) (hit panel, localX, localY int, ok bool) {
+// When chatWidth > 0 (chat panel open), the rightmost chatWidth columns
+// (after a 1-column border) hit the chat panel.
+func hitTestPanel(treeWidth, chatWidth, width, height, x, y int) (hit panel, localX, localY int, ok bool) {
 	if x < 0 || y < 0 || x >= width || y >= height {
 		return 0, 0, 0, false
 	}
 	if y >= height-1 {
 		return 0, 0, 0, false
+	}
+	// Chat region (rightmost): treeWidth + treeBorder + editorWidth + chatBorder + chatWidth = width
+	// Chat starts at width - chatWidth; the column at width - chatWidth - 1 is the border.
+	if chatWidth > 0 {
+		chatStart := width - chatWidth
+		if x >= chatStart {
+			return chatPanelHit, x - chatStart, y, true
+		}
+		if x == chatStart-1 {
+			return 0, 0, 0, false // chat-left border
+		}
 	}
 	if treeWidth == 0 {
 		return editorPanel, x, y, true
@@ -234,6 +247,20 @@ func handleTreeMouse(m model, localY int, msg tea.MouseMsg) (tea.Model, tea.Cmd)
 	return m, nil
 }
 
+// handleChatMouse routes a mouse event that landed in the chat panel.
+// Wheel events scroll the scrollback; clicks are otherwise ignored for now.
+func handleChatMouse(m model, msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.chatViewport.LineUp(3)
+		return m, nil
+	case tea.MouseButtonWheelDown:
+		m.chatViewport.LineDown(3)
+		return m, nil
+	}
+	return m, nil
+}
+
 // handleMouseMsg is the top-level mouse dispatcher. Callers must ensure
 // !m.pluginProcessing. inputMode must be inputNone except for inputHelp,
 // which routes wheel events to the help viewport.
@@ -244,13 +271,15 @@ func handleMouseMsg(m model, msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.helpViewport, cmd = m.helpViewport.Update(msg)
 		return m, cmd
 	}
-	hit, localX, localY, ok := hitTestPanel(m.treeWidth, m.width, m.height, msg.X, msg.Y)
+	hit, localX, localY, ok := hitTestPanel(m.treeWidth, m.chatWidth, m.width, m.height, msg.X, msg.Y)
 	if !ok {
 		return m, nil
 	}
 	switch hit {
 	case treePanel:
 		return handleTreeMouse(m, localY, msg)
+	case chatPanelHit:
+		return handleChatMouse(m, msg)
 	case editorPanel:
 		if m.editorMode == modePreview && m.activePanel == editorPanel &&
 			(msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown) {
