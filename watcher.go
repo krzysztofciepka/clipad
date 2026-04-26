@@ -11,6 +11,7 @@ import (
 )
 
 type fileChangedMsg struct{}
+type fileDeletedMsg struct{ Path string }
 
 func watchVault(vault string) tea.Cmd {
 	return func() tea.Msg {
@@ -18,37 +19,30 @@ func watchVault(vault string) tea.Cmd {
 		if err != nil {
 			return nil
 		}
-
-		// Walk and watch all directories recursively
 		addWatchDirs(watcher, vault)
-
-		// Debounce: wait for events to settle before sending a message
 		var debounce <-chan time.Time
-
 		for {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
 					return nil
 				}
-				// Skip dot-files/dirs
 				base := filepath.Base(event.Name)
 				if strings.HasPrefix(base, ".") {
 					continue
 				}
-				// On create, watch new directories
+				if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+					return fileDeletedMsg{Path: event.Name}
+				}
 				if event.Has(fsnotify.Create) {
 					info, err := os.Stat(event.Name)
 					if err == nil && info.IsDir() {
 						addWatchDirs(watcher, event.Name)
 					}
 				}
-				// Debounce: reset timer on each event
 				debounce = time.After(100 * time.Millisecond)
-
 			case <-debounce:
 				return fileChangedMsg{}
-
 			case _, ok := <-watcher.Errors:
 				if !ok {
 					return nil
