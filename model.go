@@ -374,7 +374,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if innerW < 1 {
 			innerW = 1
 		}
-		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
 		m.chatViewport.GotoBottom()
 		return m, readNextChatChunk(msg.chunks, msg.errs)
 
@@ -392,7 +392,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if innerW < 1 {
 			innerW = 1
 		}
-		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
 		m.chatViewport.GotoBottom()
 		return m, nil
 
@@ -408,7 +408,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if innerW < 1 {
 			innerW = 1
 		}
-		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -1008,6 +1008,15 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			ctx, cancel := context.WithCancel(context.Background())
 			m.chatCancel = cancel
 			_ = ctx
+
+			// Render the user's question and the loading placeholder
+			// immediately so they show before retrieval/streaming starts.
+			innerW := m.chatWidth - 4
+			if innerW < 1 {
+				innerW = 1
+			}
+			m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
+			m.chatViewport.GotoBottom()
 
 			return m, chatStartCmd(m.indexer, m.chatTurns, query, url, plugCfg["api_key"], plugCfg["model"])
 		}
@@ -1702,7 +1711,13 @@ func (m *model) recalcLayout() {
 			m.chatViewport.Width = innerW
 			m.chatViewport.Height = innerH
 		}
-		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
+		// Make the input fill the panel width so typed text doesn't clip
+		// at the default textinput width.
+		m.chatInput.Width = innerW - 2 // "> " prompt
+		if m.chatInput.Width < 1 {
+			m.chatInput.Width = 1
+		}
 	}
 
 	if m.inputMode == inputPluginDiff {

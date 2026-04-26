@@ -118,7 +118,10 @@ var (
 	chatHintStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
-func renderChatScrollback(turns []chatTurn, width int) string {
+func renderChatScrollback(turns []chatTurn, width int, streaming bool) string {
+	if width < 10 {
+		width = 10
+	}
 	var b strings.Builder
 	for i, t := range turns {
 		if i > 0 {
@@ -126,11 +129,19 @@ func renderChatScrollback(turns []chatTurn, width int) string {
 		}
 		switch t.Role {
 		case "user":
-			b.WriteString(chatUserStyle.Render("▸ You: ") + t.Content + "\n")
+			body := wordWrap("You: "+t.Content, width)
+			b.WriteString(chatUserStyle.Render("▸ ") + body + "\n")
 		case "assistant":
-			b.WriteString(chatAssistantStyle.Render("clipad: ") + t.Content + "\n")
+			content := t.Content
+			// While streaming, show a placeholder for the empty in-flight turn.
+			if content == "" && streaming && i == len(turns)-1 {
+				content = "(retrieving context and thinking…)"
+			}
+			body := wordWrap("clipad: "+content, width)
+			b.WriteString(chatAssistantStyle.Render(body) + "\n")
 			for j, c := range t.Citations {
-				b.WriteString("  " + chatCitationStyle.Render(fmt.Sprintf("[%d] %s L%d-L%d", j+1, c.Path, c.StartLine, c.EndLine)) + "\n")
+				cite := fmt.Sprintf("[%d] %s L%d-L%d", j+1, c.Path, c.StartLine, c.EndLine)
+				b.WriteString("  " + chatCitationStyle.Render(wordWrap(cite, width-2)) + "\n")
 			}
 		}
 	}
