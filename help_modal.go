@@ -49,6 +49,8 @@ var helpSections = []helpSection{
 			{"Ctrl+Space", "Plugin selector"},
 			{"Ctrl+G", "AI shortcut selector"},
 			{"Ctrl+L", "Create AI shortcut"},
+			{"Ctrl+Shift+F", "Vault search"},
+			{"Ctrl+Shift+A", "Ask your vault"},
 			{"Ctrl+?", "Show this help"},
 		},
 	},
@@ -86,6 +88,25 @@ var helpSections = []helpSection{
 		entries: []helpEntry{
 			{"y", "Accept changes"},
 			{"n", "Reject changes"},
+		},
+	},
+	{
+		title: "Vault Search",
+		entries: []helpEntry{
+			{"Type", "Live semantic search across all notes"},
+			{"↑ / ↓", "Navigate results"},
+			{"Enter", "Open file at chunk start"},
+			{"Esc", "Close"},
+		},
+	},
+	{
+		title: "Vault Chat",
+		entries: []helpEntry{
+			{"Enter", "Send (input mode)"},
+			{"Esc", "Switch to view mode (input) / close panel (view)"},
+			{"i / /", "Return to input mode"},
+			{"1–9", "Open numbered citation"},
+			{"↑ / ↓", "Scroll scrollback"},
 		},
 	},
 }
