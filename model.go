@@ -706,7 +706,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputMode = inputHelp
 			return m, nil
 
-		case "ctrl+shift+f":
+		case "ctrl+t":
 			if m.indexer == nil || m.indexer.embedder == nil {
 				m.errMsg = "Configure embedding_provider in config.toml"
 				return m, nil
@@ -719,7 +719,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.vaultSearchInput.Focus()
 			return m, cmd
 
-		case "ctrl+shift+a":
+		case "ctrl+k":
 			if m.indexer == nil || m.indexer.embedder == nil {
 				m.errMsg = "Configure embedding_provider in config.toml"
 				return m, nil
@@ -1062,12 +1062,12 @@ func (m model) handleVaultSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.inputMode = inputNone
 		m.vaultSearchInput.Blur()
 		return m, nil
-	case "up", "ctrl+k":
+	case "up":
 		if m.vaultSearchCursor > 0 {
 			m.vaultSearchCursor--
 		}
 		return m, nil
-	case "down", "ctrl+j":
+	case "down":
 		if m.vaultSearchCursor < len(m.vaultSearchResults)-1 {
 			m.vaultSearchCursor++
 		}
