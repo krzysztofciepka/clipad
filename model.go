@@ -1482,14 +1482,15 @@ func (m model) View() string {
 	}
 
 	sb := StatusBar{
-		width:      m.width,
-		treeActive: m.activePanel == treePanel,
-		filename:   filename,
-		line:       line + 1,
-		col:        col + 1,
-		dirty:      m.isDirty(),
-		errMsg:     m.errMsg,
-		fileOpen:   m.currentFile != "" || m.newNoteDir != "",
+		width:         m.width,
+		treeActive:    m.activePanel == treePanel,
+		filename:      filename,
+		line:          line + 1,
+		col:           col + 1,
+		dirty:         m.isDirty(),
+		errMsg:        m.errMsg,
+		fileOpen:      m.currentFile != "" || m.newNoteDir != "",
+		indexerStatus: m.indexerStatus,
 	}
 	if m.autoSaveFlash {
 		sb.flashMsg = "Auto-saved"

@@ -29,15 +29,16 @@ var (
 )
 
 type StatusBar struct {
-	width      int
-	treeActive bool
-	filename   string
-	line       int
-	col        int
-	dirty      bool
-	errMsg     string
-	flashMsg   string // non-error flash message (e.g. "Auto-saved")
-	fileOpen   bool
+	width         int
+	treeActive    bool
+	filename      string
+	line          int
+	col           int
+	dirty         bool
+	errMsg        string
+	flashMsg      string // non-error flash message (e.g. "Auto-saved")
+	fileOpen      bool
+	indexerStatus string // e.g. "[idx 47/312]"
 }
 
 type hint struct {
@@ -66,16 +67,19 @@ func (s StatusBar) View() string {
 	}
 
 	right := ""
+	if s.indexerStatus != "" {
+		right = statusFlashStyle.Render(s.indexerStatus) + "  "
+	}
 	if s.errMsg != "" {
-		right = statusErrorStyle.Render(s.errMsg)
+		right += statusErrorStyle.Render(s.errMsg)
 	} else if s.flashMsg != "" {
-		right = statusFlashStyle.Render(s.flashMsg)
+		right += statusFlashStyle.Render(s.flashMsg)
 	} else if s.filename != "" {
 		modified := ""
 		if s.dirty {
 			modified = " [+]"
 		}
-		right = fmt.Sprintf("%d:%d  %s%s", s.line, s.col, s.filename, modified)
+		right += fmt.Sprintf("%d:%d  %s%s", s.line, s.col, s.filename, modified)
 	}
 
 	// Available content width (subtract padding)
