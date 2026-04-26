@@ -344,6 +344,66 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.vaultSearchPending = true
 		return m, searchVaultCmd(m.indexer, msg.token, m.vaultSearchInput.Value(), 8, 80)
 
+	case chatStartedMsg:
+		m.chatActiveChunks = msg.chunks
+		m.chatCurrentCites = msg.citations
+		return m, streamChatCmd(msg.chunks, msg.errs)
+
+	case chatStartFailedMsg:
+		m.chatStreaming = false
+		if len(m.chatTurns) > 0 && m.chatTurns[len(m.chatTurns)-1].Role == "assistant" {
+			m.chatTurns = m.chatTurns[:len(m.chatTurns)-1]
+		}
+		m.errMsg = "Chat: " + msg.err.Error()
+		return m, nil
+
+	case chatChunkMsg:
+		if msg.chunks != m.chatActiveChunks {
+			return m, nil
+		}
+		last := &m.chatTurns[len(m.chatTurns)-1]
+		last.Content += msg.delta
+		innerW := m.chatWidth - 4
+		if innerW < 1 {
+			innerW = 1
+		}
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+		m.chatViewport.GotoBottom()
+		return m, readNextChatChunk(msg.chunks, msg.errs)
+
+	case chatDoneMsg:
+		if msg.chunks != m.chatActiveChunks {
+			return m, nil
+		}
+		m.chatStreaming = false
+		m.chatActiveChunks = nil
+		m.chatCancel = nil
+		last := &m.chatTurns[len(m.chatTurns)-1]
+		last.Citations = m.chatCurrentCites
+		m.chatCurrentCites = nil
+		innerW := m.chatWidth - 4
+		if innerW < 1 {
+			innerW = 1
+		}
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+		m.chatViewport.GotoBottom()
+		return m, nil
+
+	case chatErrMsg:
+		if msg.chunks != m.chatActiveChunks {
+			return m, nil
+		}
+		m.chatStreaming = false
+		m.chatActiveChunks = nil
+		last := &m.chatTurns[len(m.chatTurns)-1]
+		last.Content = "Error: " + msg.err.Error()
+		innerW := m.chatWidth - 4
+		if innerW < 1 {
+			innerW = 1
+		}
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -687,6 +747,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.chatOpen {
+			return m.handleChatPanel(msg)
+		}
 		if m.activePanel == treePanel {
 			return m.handleTreeKeys(msg)
 		}
@@ -881,6 +944,107 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHelp(msg)
 	case inputVaultSearch:
 		return m.handleVaultSearch(msg)
+	}
+	return m, nil
+}
+
+func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.chatStreaming {
+		if msg.String() == "esc" {
+			if m.chatCancel != nil {
+				m.chatCancel()
+				m.chatCancel = nil
+			}
+			m.chatStreaming = false
+			m.chatActiveChunks = nil
+			m.chatMode = chatModeView
+			m.chatInput.Blur()
+			return m, nil
+		}
+		return m, nil
+	}
+
+	switch m.chatMode {
+	case chatModeInput:
+		switch msg.String() {
+		case "esc":
+			m.chatMode = chatModeView
+			m.chatInput.Blur()
+			return m, nil
+		case "enter":
+			query := strings.TrimSpace(m.chatInput.Value())
+			if query == "" {
+				return m, nil
+			}
+			m.chatInput.SetValue("")
+			m.chatTurns = append(m.chatTurns, chatTurn{Role: "user", Content: query})
+			m.chatTurns = append(m.chatTurns, chatTurn{Role: "assistant", Content: ""})
+			m.chatStreaming = true
+
+			provider := m.activeShortcutProvider
+			if provider == "" {
+				provider = defaultAIShortcutProvider
+			}
+			plugCfg, err := loadPluginConfig(provider)
+			if err != nil {
+				m.chatStreaming = false
+				m.errMsg = "Plugin config: " + err.Error()
+				if len(m.chatTurns) > 0 && m.chatTurns[len(m.chatTurns)-1].Role == "assistant" {
+					m.chatTurns = m.chatTurns[:len(m.chatTurns)-1]
+				}
+				return m, nil
+			}
+			url := defaultBlackboxURL
+			if provider == "openrouter" {
+				url = defaultOpenRouterURL
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			m.chatCancel = cancel
+			_ = ctx
+
+			return m, chatStartCmd(m.indexer, m.chatTurns, query, url, plugCfg["api_key"], plugCfg["model"])
+		}
+		var cmd tea.Cmd
+		m.chatInput, cmd = m.chatInput.Update(msg)
+		return m, cmd
+	case chatModeView:
+		switch msg.String() {
+		case "esc":
+			m.chatOpen = false
+			m.chatInput.Blur()
+			m.recalcLayout()
+			return m, nil
+		case "i", "/":
+			m.chatMode = chatModeInput
+			cmd := m.chatInput.Focus()
+			return m, cmd
+		case "up", "k":
+			m.chatViewport.LineUp(1)
+			return m, nil
+		case "down", "j":
+			m.chatViewport.LineDown(1)
+			return m, nil
+		}
+		s := msg.String()
+		if len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+			n := int(s[0] - '0')
+			cite := mostRecentCitation(m.chatTurns, n)
+			if cite != nil {
+				abs := filepath.Join(m.vault, cite.Path)
+				if m.isDirty() {
+					m.inputMode = inputUnsavedGuard
+					m.pendingAction = pendingSwitchFile
+					m.pendingSwitchPath = abs
+					return m, nil
+				}
+				m.openFile(abs)
+				m.editor.MoveTo(cite.StartLine-1, 0)
+				m.activePanel = editorPanel
+				m.editorMode = modeEdit
+				return m, m.editor.Focus()
+			}
+		}
+		return m, nil
 	}
 	return m, nil
 }
