@@ -306,13 +306,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case indexProgressMsg:
-		m.indexerStatus = fmt.Sprintf("[idx %d/%d]", msg.done, msg.total)
-		return m, nil
+		if msg.embedded > 0 {
+			m.indexerStatus = fmt.Sprintf("[idx %d/%d +%d]", msg.done, msg.total, msg.embedded)
+		} else {
+			m.indexerStatus = fmt.Sprintf("[idx %d/%d]", msg.done, msg.total)
+		}
+		// Chain: process the next file (or finish if this was the last).
+		return m, processIndexFileCmd(msg.idx, msg.paths, msg.done, msg.embedded)
 
 	case indexDoneMsg:
 		if msg.err != nil {
 			m.indexerStatus = "[idx error]"
 			m.errMsg = "Index: " + msg.err.Error()
+		} else if msg.embedded > 0 {
+			m.indexerStatus = fmt.Sprintf("[idx done +%d]", msg.embedded)
 		} else {
 			m.indexerStatus = ""
 		}

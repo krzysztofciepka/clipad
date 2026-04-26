@@ -146,8 +146,12 @@ func TestRebuildFile_FreshFileEmbedsAllChunks(t *testing.T) {
 	}
 	defer idx.Close()
 
-	if err := idx.RebuildFile(context.Background(), path); err != nil {
+	embedded, err := idx.RebuildFile(context.Background(), path)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if embedded != 3 {
+		t.Errorf("RebuildFile embedded = %d, want 3", embedded)
 	}
 
 	var n int
@@ -170,7 +174,7 @@ func TestRebuildFile_OnlyChangedChunkReEmbeds(t *testing.T) {
 	idx, _ := OpenIndex(":memory:", vault, emb)
 	defer idx.Close()
 
-	if err := idx.RebuildFile(context.Background(), path); err != nil {
+	if _, err := idx.RebuildFile(context.Background(), path); err != nil {
 		t.Fatal(err)
 	}
 	callsAfterFirst := emb.calls
@@ -178,8 +182,12 @@ func TestRebuildFile_OnlyChangedChunkReEmbeds(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha.\n\nbeta MODIFIED.\n\ngamma."), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.RebuildFile(context.Background(), path); err != nil {
+	embedded, err := idx.RebuildFile(context.Background(), path)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if embedded != 1 {
+		t.Errorf("incremental embed count = %d, want 1", embedded)
 	}
 
 	if emb.calls != callsAfterFirst+1 {
@@ -209,8 +217,8 @@ func TestRemoveFile(t *testing.T) {
 	idx, _ := OpenIndex(":memory:", vault, emb)
 	defer idx.Close()
 
-	_ = idx.RebuildFile(context.Background(), pathA)
-	_ = idx.RebuildFile(context.Background(), pathB)
+	_, _ = idx.RebuildFile(context.Background(), pathA)
+	_, _ = idx.RebuildFile(context.Background(), pathB)
 
 	if err := idx.RemoveFile(context.Background(), pathA); err != nil {
 		t.Fatal(err)
@@ -236,7 +244,7 @@ func TestSearch_RanksByCosine(t *testing.T) {
 	defer idx.Close()
 
 	for _, p := range []string{a, b, c} {
-		if err := idx.RebuildFile(context.Background(), p); err != nil {
+		if _, err := idx.RebuildFile(context.Background(), p); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -180,18 +180,19 @@ func (idx *Index) relPath(absPath string) (string, error) {
 
 // RebuildFile re-chunks the file at absPath and updates the index so that
 // chunks(file_path = rel) exactly matches the new chunk set, embedding only
-// chunks whose hash isn't already present (model-matched).
-func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
+// chunks whose hash isn't already present (model-matched). Returns the
+// number of chunks that were freshly embedded.
+func (idx *Index) RebuildFile(ctx context.Context, absPath string) (int, error) {
 	if idx.embedder == nil {
-		return errors.New("index: no embedder configured")
+		return 0, errors.New("index: no embedder configured")
 	}
 	rel, err := idx.relPath(absPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return fmt.Errorf("read: %w", err)
+		return 0, fmt.Errorf("read: %w", err)
 	}
 	newChunks := chunkFile(string(data))
 
@@ -200,14 +201,14 @@ func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
 	rows, err := idx.db.QueryContext(ctx,
 		`SELECT id, chunk_hash FROM chunks WHERE file_path = ? AND model = ?`, rel, model)
 	if err != nil {
-		return fmt.Errorf("select existing: %w", err)
+		return 0, fmt.Errorf("select existing: %w", err)
 	}
 	for rows.Next() {
 		var id int64
 		var h string
 		if err := rows.Scan(&id, &h); err != nil {
 			rows.Close()
-			return err
+			return 0, err
 		}
 		existing[h] = id
 	}
@@ -225,21 +226,21 @@ func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
 
 	tx, err := idx.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return 0, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
 	delRows, err := tx.QueryContext(ctx,
 		`SELECT id FROM chunks WHERE file_path = ? AND model = ?`, rel, model)
 	if err != nil {
-		return fmt.Errorf("select for delete: %w", err)
+		return 0, fmt.Errorf("select for delete: %w", err)
 	}
 	var idsToDelete []int64
 	for delRows.Next() {
 		var id int64
 		if err := delRows.Scan(&id); err != nil {
 			delRows.Close()
-			return err
+			return 0, err
 		}
 		if !keep[id] {
 			idsToDelete = append(idsToDelete, id)
@@ -248,10 +249,11 @@ func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
 	delRows.Close()
 	for _, id := range idsToDelete {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM chunks WHERE id = ?`, id); err != nil {
-			return fmt.Errorf("delete: %w", err)
+			return 0, fmt.Errorf("delete: %w", err)
 		}
 	}
 
+	embedded := 0
 	if len(toEmbed) > 0 {
 		texts := make([]string, len(toEmbed))
 		for i, c := range toEmbed {
@@ -259,10 +261,10 @@ func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
 		}
 		vecs, err := idx.embedder.Embed(ctx, texts)
 		if err != nil {
-			return fmt.Errorf("embed: %w", err)
+			return 0, fmt.Errorf("embed: %w", err)
 		}
 		if len(vecs) != len(toEmbed) {
-			return fmt.Errorf("embed: got %d vectors for %d chunks", len(vecs), len(toEmbed))
+			return 0, fmt.Errorf("embed: got %d vectors for %d chunks", len(vecs), len(toEmbed))
 		}
 		now := time.Now().Unix()
 		for i, c := range toEmbed {
@@ -271,12 +273,16 @@ func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
 				`INSERT INTO chunks(file_path, start_line, end_line, text, chunk_hash, embedding, model, dim, updated_at)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				rel, c.StartLine, c.EndLine, c.Text, c.Hash, blob, model, len(vecs[i]), now); err != nil {
-				return fmt.Errorf("insert: %w", err)
+				return 0, fmt.Errorf("insert: %w", err)
 			}
 		}
+		embedded = len(toEmbed)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return embedded, nil
 }
 
 // Result is a single search hit with its score.
@@ -362,8 +368,16 @@ func (idx *Index) RemoveFile(ctx context.Context, absPath string) error {
 	return err
 }
 
-type indexProgressMsg struct{ done, total int }
-type indexDoneMsg struct{ err error }
+type indexProgressMsg struct {
+	done, total int
+	embedded    int  // cumulative chunks freshly embedded this sweep
+	idx         *Index
+	paths       []string
+}
+type indexDoneMsg struct {
+	err      error
+	embedded int
+}
 type indexFileMsg struct{ path string }
 
 // collectMarkdownFiles walks vault and returns absolute paths of every .md.
@@ -388,8 +402,8 @@ func collectMarkdownFiles(vault string) ([]string, error) {
 	return out, err
 }
 
-// startInitialIndex returns a tea.Cmd that does a full vault sweep,
-// embedding any chunks that aren't already in the index.
+// startInitialIndex returns a tea.Cmd that walks the vault and queues the
+// first per-file processing step. Subsequent files chain via indexProgressMsg.
 func startInitialIndex(idx *Index, vault string) tea.Cmd {
 	return func() tea.Msg {
 		if idx == nil || idx.embedder == nil {
@@ -399,13 +413,32 @@ func startInitialIndex(idx *Index, vault string) tea.Cmd {
 		if err != nil {
 			return indexDoneMsg{err: err}
 		}
-		ctx := context.Background()
-		for _, p := range paths {
-			if err := idx.RebuildFile(ctx, p); err != nil {
-				return indexDoneMsg{err: err}
-			}
+		if len(paths) == 0 {
+			return indexDoneMsg{}
 		}
-		return indexDoneMsg{}
+		// Emit a "starting" progress msg; the model handler chains the next file.
+		return indexProgressMsg{done: 0, total: len(paths), embedded: 0, idx: idx, paths: paths}
+	}
+}
+
+// processIndexFileCmd runs RebuildFile on paths[i] and emits the next progress msg.
+// When i == len(paths), it emits indexDoneMsg.
+func processIndexFileCmd(idx *Index, paths []string, i, embeddedSoFar int) tea.Cmd {
+	return func() tea.Msg {
+		if i >= len(paths) {
+			return indexDoneMsg{embedded: embeddedSoFar}
+		}
+		n, err := idx.RebuildFile(context.Background(), paths[i])
+		if err != nil {
+			return indexDoneMsg{err: err, embedded: embeddedSoFar}
+		}
+		return indexProgressMsg{
+			done:     i + 1,
+			total:    len(paths),
+			embedded: embeddedSoFar + n,
+			idx:      idx,
+			paths:    paths,
+		}
 	}
 }
 
@@ -415,7 +448,7 @@ func reindexFileCmd(idx *Index, path string) tea.Cmd {
 		if idx == nil || idx.embedder == nil {
 			return indexFileMsg{path: path}
 		}
-		_ = idx.RebuildFile(context.Background(), path)
+		_, _ = idx.RebuildFile(context.Background(), path)
 		return indexFileMsg{path: path}
 	}
 }
