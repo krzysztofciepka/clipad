@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -163,6 +166,126 @@ func decodeEmbedding(b []byte) []float32 {
 		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
 	}
 	return out
+}
+
+// relPath returns the path relative to the index's vault root.
+func (idx *Index) relPath(absPath string) (string, error) {
+	rel, err := filepath.Rel(idx.vault, absPath)
+	if err != nil {
+		return "", fmt.Errorf("relpath: %w", err)
+	}
+	return rel, nil
+}
+
+// RebuildFile re-chunks the file at absPath and updates the index so that
+// chunks(file_path = rel) exactly matches the new chunk set, embedding only
+// chunks whose hash isn't already present (model-matched).
+func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
+	if idx.embedder == nil {
+		return errors.New("index: no embedder configured")
+	}
+	rel, err := idx.relPath(absPath)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return fmt.Errorf("read: %w", err)
+	}
+	newChunks := chunkFile(string(data))
+
+	model := idx.embedder.Model()
+	existing := map[string]int64{}
+	rows, err := idx.db.QueryContext(ctx,
+		`SELECT id, chunk_hash FROM chunks WHERE file_path = ? AND model = ?`, rel, model)
+	if err != nil {
+		return fmt.Errorf("select existing: %w", err)
+	}
+	for rows.Next() {
+		var id int64
+		var h string
+		if err := rows.Scan(&id, &h); err != nil {
+			rows.Close()
+			return err
+		}
+		existing[h] = id
+	}
+	rows.Close()
+
+	keep := map[int64]bool{}
+	var toEmbed []chunk
+	for _, c := range newChunks {
+		if id, ok := existing[c.Hash]; ok {
+			keep[id] = true
+		} else {
+			toEmbed = append(toEmbed, c)
+		}
+	}
+
+	tx, err := idx.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	delRows, err := tx.QueryContext(ctx,
+		`SELECT id FROM chunks WHERE file_path = ? AND model = ?`, rel, model)
+	if err != nil {
+		return fmt.Errorf("select for delete: %w", err)
+	}
+	var idsToDelete []int64
+	for delRows.Next() {
+		var id int64
+		if err := delRows.Scan(&id); err != nil {
+			delRows.Close()
+			return err
+		}
+		if !keep[id] {
+			idsToDelete = append(idsToDelete, id)
+		}
+	}
+	delRows.Close()
+	for _, id := range idsToDelete {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM chunks WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
+	}
+
+	if len(toEmbed) > 0 {
+		texts := make([]string, len(toEmbed))
+		for i, c := range toEmbed {
+			texts[i] = c.Text
+		}
+		vecs, err := idx.embedder.Embed(ctx, texts)
+		if err != nil {
+			return fmt.Errorf("embed: %w", err)
+		}
+		if len(vecs) != len(toEmbed) {
+			return fmt.Errorf("embed: got %d vectors for %d chunks", len(vecs), len(toEmbed))
+		}
+		now := time.Now().Unix()
+		for i, c := range toEmbed {
+			blob := encodeEmbedding(vecs[i])
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO chunks(file_path, start_line, end_line, text, chunk_hash, embedding, model, dim, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				rel, c.StartLine, c.EndLine, c.Text, c.Hash, blob, model, len(vecs[i]), now); err != nil {
+				return fmt.Errorf("insert: %w", err)
+			}
+		}
+	}
+
+	return tx.Commit()
+}
+
+// RemoveFile deletes all chunks for the file at absPath.
+func (idx *Index) RemoveFile(ctx context.Context, absPath string) error {
+	rel, err := idx.relPath(absPath)
+	if err != nil {
+		return err
+	}
+	_, err = idx.db.ExecContext(ctx, `DELETE FROM chunks WHERE file_path = ?`, rel)
+	return err
 }
 
 // cosine returns dot(a,b)/(|a||b|). Returns 0 if either is zero-norm.

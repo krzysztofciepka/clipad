@@ -134,3 +134,69 @@ func writeFile(t *testing.T, dir, name, body string) string {
 	}
 	return p
 }
+
+func TestRebuildFile_FreshFileEmbedsAllChunks(t *testing.T) {
+	vault := t.TempDir()
+	path := writeFile(t, vault, "a.md", "para one.\n\npara two.\n\npara three.")
+
+	emb := onehotEmbedder("test-model", 8)
+	idx, err := OpenIndex(":memory:", vault, emb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	if err := idx.RebuildFile(context.Background(), path); err != nil {
+		t.Fatal(err)
+	}
+
+	var n int
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM chunks`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Errorf("rows = %d, want 3", n)
+	}
+	if emb.calls != 1 {
+		t.Errorf("embedder calls = %d, want 1 (one batch for the whole file)", emb.calls)
+	}
+}
+
+func TestRebuildFile_OnlyChangedChunkReEmbeds(t *testing.T) {
+	vault := t.TempDir()
+	path := writeFile(t, vault, "a.md", "alpha.\n\nbeta.\n\ngamma.")
+
+	emb := onehotEmbedder("m", 8)
+	idx, _ := OpenIndex(":memory:", vault, emb)
+	defer idx.Close()
+
+	if err := idx.RebuildFile(context.Background(), path); err != nil {
+		t.Fatal(err)
+	}
+	callsAfterFirst := emb.calls
+
+	if err := os.WriteFile(path, []byte("alpha.\n\nbeta MODIFIED.\n\ngamma."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.RebuildFile(context.Background(), path); err != nil {
+		t.Fatal(err)
+	}
+
+	if emb.calls != callsAfterFirst+1 {
+		t.Errorf("embedder calls after edit = %d, want %d", emb.calls, callsAfterFirst+1)
+	}
+	var n int
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM chunks`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Errorf("rows after edit = %d, want 3", n)
+	}
+	var found int
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE text LIKE ?`, "%MODIFIED%").Scan(&found); err != nil {
+		t.Fatal(err)
+	}
+	if found != 1 {
+		t.Errorf("found = %d, want 1 row containing MODIFIED", found)
+	}
+}
