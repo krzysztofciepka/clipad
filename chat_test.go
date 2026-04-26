@@ -36,21 +36,38 @@ func TestMostRecentCitation_SkipsTurnsWithoutCites(t *testing.T) {
 	}
 }
 
-func TestEncodeChatHistory_PreservesRoles(t *testing.T) {
+func TestEncodeChatHistory_SingleTurnIsBareQuery(t *testing.T) {
+	got := encodeChatHistory([]chatMessage{{Role: "user", Content: "what's my plan?"}})
+	if got != "what's my plan?" {
+		t.Errorf("got %q, want bare query", got)
+	}
+}
+
+func TestEncodeChatHistory_MultiTurnIsTranscript(t *testing.T) {
 	msgs := []chatMessage{
 		{Role: "user", Content: "hello"},
 		{Role: "assistant", Content: "hi"},
 		{Role: "user", Content: "current"},
 	}
 	got := encodeChatHistory(msgs)
-	// Each role: "<json>" entry separated by blank lines
-	if got == "" {
-		t.Fatal("encodeChatHistory returned empty")
-	}
-	for _, want := range []string{"user: \"hello\"", "assistant: \"hi\"", "user: \"current\""} {
+	for _, want := range []string{"User: hello", "Assistant: hi", "User: current"} {
 		if !contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
+	}
+}
+
+func TestComposeChatRequest_StripsAssistantPlaceholder(t *testing.T) {
+	turns := []chatTurn{
+		{Role: "user", Content: "what is X?"},
+		{Role: "assistant", Content: ""}, // UI placeholder
+	}
+	_, msgs, _ := composeChatRequest(turns, nil)
+	if len(msgs) != 1 {
+		t.Fatalf("got %d messages, want 1 (the user query)", len(msgs))
+	}
+	if msgs[0].Content != "what is X?" {
+		t.Errorf("user content = %q, want 'what is X?'", msgs[0].Content)
 	}
 }
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -93,16 +92,30 @@ func chatStartCmd(idx *Index, turns []chatTurn, query string, providerURL, apiKe
 
 // encodeChatHistory packs prior turns + current user into a single string for
 // streamChatCompletion's userMessage parameter (which only takes system + user).
-// The retrieved-chunk context lives in the system prompt; this function
-// preserves role boundaries via a "role: <json-quoted>" prefix per turn.
+// The retrieved-chunk context lives in the system prompt.
+//
+// For a single-turn message (no prior history) the output is just the user's
+// query verbatim. For multi-turn, prior turns render as a "User: …" /
+// "Assistant: …" transcript, with the current question as the last entry.
 func encodeChatHistory(msgs []chatMessage) string {
+	if len(msgs) == 0 {
+		return ""
+	}
+	if len(msgs) == 1 && msgs[0].Role == "user" {
+		return msgs[0].Content
+	}
 	var b strings.Builder
 	for i, m := range msgs {
 		if i > 0 {
 			b.WriteString("\n\n")
 		}
-		j, _ := json.Marshal(m.Content)
-		fmt.Fprintf(&b, "%s: %s", m.Role, string(j))
+		switch m.Role {
+		case "user":
+			b.WriteString("User: ")
+		case "assistant":
+			b.WriteString("Assistant: ")
+		}
+		b.WriteString(m.Content)
 	}
 	return b.String()
 }

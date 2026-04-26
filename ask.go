@@ -15,11 +15,20 @@ type chatMessage struct {
 // composeChatRequest builds the messages array for an Ask-your-vault call.
 // turns is the full session history INCLUDING the user's brand-new question
 // at the end. retrievedChunks is the top-K context for the current query.
+//
+// Callers commonly pass turns that include a trailing empty assistant
+// placeholder (so the UI can render a "thinking…" indicator); we strip
+// that here so the function still finds the user turn.
 func composeChatRequest(turns []chatTurn, retrievedChunks []Result) (system string, messages []chatMessage, citations []citation) {
 	system = buildSystemPrompt(retrievedChunks)
 	citations = make([]citation, len(retrievedChunks))
 	for i, c := range retrievedChunks {
 		citations[i] = citation{Path: c.Path, StartLine: c.StartLine, EndLine: c.EndLine}
+	}
+
+	// Strip trailing empty assistant placeholder used by the UI.
+	if len(turns) > 0 && turns[len(turns)-1].Role == "assistant" && turns[len(turns)-1].Content == "" {
+		turns = turns[:len(turns)-1]
 	}
 
 	if len(turns) == 0 || turns[len(turns)-1].Role != "user" {
