@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	_ "modernc.org/sqlite"
 )
 
@@ -359,6 +360,75 @@ func (idx *Index) RemoveFile(ctx context.Context, absPath string) error {
 	}
 	_, err = idx.db.ExecContext(ctx, `DELETE FROM chunks WHERE file_path = ?`, rel)
 	return err
+}
+
+type indexProgressMsg struct{ done, total int }
+type indexDoneMsg struct{ err error }
+type indexFileMsg struct{ path string }
+
+// collectMarkdownFiles walks vault and returns absolute paths of every .md.
+func collectMarkdownFiles(vault string) ([]string, error) {
+	var out []string
+	err := filepath.Walk(vault, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			name := info.Name()
+			if (strings.HasPrefix(name, ".") && path != vault) || name == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, ".md") {
+			out = append(out, path)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// startInitialIndex returns a tea.Cmd that does a full vault sweep,
+// embedding any chunks that aren't already in the index.
+func startInitialIndex(idx *Index, vault string) tea.Cmd {
+	return func() tea.Msg {
+		if idx == nil || idx.embedder == nil {
+			return indexDoneMsg{}
+		}
+		paths, err := collectMarkdownFiles(vault)
+		if err != nil {
+			return indexDoneMsg{err: err}
+		}
+		ctx := context.Background()
+		for _, p := range paths {
+			if err := idx.RebuildFile(ctx, p); err != nil {
+				return indexDoneMsg{err: err}
+			}
+		}
+		return indexDoneMsg{}
+	}
+}
+
+// reindexFileCmd re-indexes a single file in the background.
+func reindexFileCmd(idx *Index, path string) tea.Cmd {
+	return func() tea.Msg {
+		if idx == nil || idx.embedder == nil {
+			return indexFileMsg{path: path}
+		}
+		_ = idx.RebuildFile(context.Background(), path)
+		return indexFileMsg{path: path}
+	}
+}
+
+// removeFileFromIndexCmd handles deletion.
+func removeFileFromIndexCmd(idx *Index, path string) tea.Cmd {
+	return func() tea.Msg {
+		if idx == nil {
+			return indexFileMsg{path: path}
+		}
+		_ = idx.RemoveFile(context.Background(), path)
+		return indexFileMsg{path: path}
+	}
 }
 
 // cosine returns dot(a,b)/(|a||b|). Returns 0 if either is zero-norm.
