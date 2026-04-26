@@ -270,6 +270,12 @@ func (e *SelectableEditor) ScrollDown(n int) {
 	e.noteMovement()
 }
 
+// MoveTo positions the cursor at (line, col), both 0-indexed. Public
+// wrapper around moveTo for callers in other files.
+func (e *SelectableEditor) MoveTo(line, col int) {
+	e.moveTo(line, col)
+}
+
 func (e *SelectableEditor) moveTo(line, col int) {
 	for e.Line() > line {
 		e.Model, _ = e.Model.Update(tea.KeyMsg{Type: tea.KeyUp})

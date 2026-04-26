@@ -321,6 +321,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case indexFileMsg:
 		return m, nil
 
+	case vaultSearchResultsMsg:
+		if msg.token != m.vaultSearchToken {
+			return m, nil
+		}
+		m.vaultSearchPending = false
+		if msg.err != nil {
+			m.errMsg = "Search: " + msg.err.Error()
+			return m, nil
+		}
+		m.vaultSearchResults = msg.results
+		m.vaultSearchCursor = 0
+		return m, nil
+
+	case vaultSearchTickMsg:
+		if msg.token != m.vaultSearchToken {
+			return m, nil
+		}
+		if m.indexer == nil {
+			return m, nil
+		}
+		m.vaultSearchPending = true
+		return m, searchVaultCmd(m.indexer, msg.token, m.vaultSearchInput.Value(), 8, 80)
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -616,6 +639,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputMode = inputHelp
 			return m, nil
 
+		case "ctrl+shift+f":
+			if m.indexer == nil || m.indexer.embedder == nil {
+				m.errMsg = "Configure embedding_provider in config.toml"
+				return m, nil
+			}
+			m.inputMode = inputVaultSearch
+			m.vaultSearchInput.SetValue("")
+			m.vaultSearchResults = nil
+			m.vaultSearchCursor = 0
+			m.vaultSearchOffset = 0
+			cmd := m.vaultSearchInput.Focus()
+			return m, cmd
+
+		case "ctrl+shift+a":
+			if m.indexer == nil || m.indexer.embedder == nil {
+				m.errMsg = "Configure embedding_provider in config.toml"
+				return m, nil
+			}
+			if m.chatOpen {
+				if m.chatCancel != nil {
+					m.chatCancel()
+					m.chatCancel = nil
+				}
+				m.chatOpen = false
+				m.chatInput.Blur()
+				m.recalcLayout()
+				return m, nil
+			}
+			m.chatOpen = true
+			m.chatMode = chatModeInput
+			m.recalcLayout()
+			cmd := m.chatInput.Focus()
+			return m, cmd
+
 		case "tab":
 			if m.activePanel == treePanel {
 				m.activePanel = editorPanel
@@ -822,8 +879,57 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleRename(msg)
 	case inputHelp:
 		return m.handleHelp(msg)
+	case inputVaultSearch:
+		return m.handleVaultSearch(msg)
 	}
 	return m, nil
+}
+
+func (m model) handleVaultSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.inputMode = inputNone
+		m.vaultSearchInput.Blur()
+		return m, nil
+	case "up", "ctrl+k":
+		if m.vaultSearchCursor > 0 {
+			m.vaultSearchCursor--
+		}
+		return m, nil
+	case "down", "ctrl+j":
+		if m.vaultSearchCursor < len(m.vaultSearchResults)-1 {
+			m.vaultSearchCursor++
+		}
+		return m, nil
+	case "enter":
+		if len(m.vaultSearchResults) == 0 {
+			return m, nil
+		}
+		r := m.vaultSearchResults[m.vaultSearchCursor]
+		abs := filepath.Join(m.vault, r.Path)
+		m.inputMode = inputNone
+		m.vaultSearchInput.Blur()
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingSwitchFile
+			m.pendingSwitchPath = abs
+			return m, nil
+		}
+		m.openFile(abs)
+		m.editor.MoveTo(r.StartLine-1, 0)
+		m.activePanel = editorPanel
+		m.editorMode = modeEdit
+		return m, m.editor.Focus()
+	}
+	prev := m.vaultSearchInput.Value()
+	var cmd tea.Cmd
+	m.vaultSearchInput, cmd = m.vaultSearchInput.Update(msg)
+	cur := m.vaultSearchInput.Value()
+	if cur != prev {
+		m.vaultSearchToken++
+		return m, tea.Batch(cmd, vaultSearchTickCmd(m.vaultSearchToken))
+	}
+	return m, cmd
 }
 
 func (m model) handleHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1408,7 +1514,16 @@ func (m model) View() string {
 	}
 
 	var rightView string
-	if m.inputMode == inputHelp {
+	if m.inputMode == inputVaultSearch {
+		modal := vaultSearchView(
+			m.vaultSearchInput.View(),
+			m.vaultSearchResults,
+			m.vaultSearchCursor,
+			m.vaultSearchOffset,
+			m.editorWidth, m.editorHeight,
+		)
+		rightView = lipgloss.Place(m.editorWidth, m.editorHeight, lipgloss.Center, lipgloss.Center, modal)
+	} else if m.inputMode == inputHelp {
 		rightView = lipgloss.NewStyle().
 			Width(m.editorWidth).
 			MaxHeight(m.editorHeight).
