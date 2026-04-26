@@ -14,9 +14,19 @@ type Config struct {
 	GitRemote          string     `toml:"git_remote,omitempty"`
 	LastSync           *time.Time `toml:"last_sync,omitempty"`
 	AIShortcutProvider string     `toml:"ai_shortcut_provider,omitempty"`
+
+	EmbeddingProvider string `toml:"embedding_provider,omitempty"`
+	EmbeddingModel    string `toml:"embedding_model,omitempty"`
+	OllamaURL         string `toml:"ollama_url,omitempty"`
 }
 
-const defaultAIShortcutProvider = "blackbox"
+const (
+	defaultAIShortcutProvider       = "blackbox"
+	defaultEmbeddingProvider        = "openrouter"
+	defaultEmbeddingModelOpenRouter = "qwen/qwen3-embedding-8b"
+	defaultEmbeddingModelOllama     = "nomic-embed-text"
+	defaultOllamaURL                = "http://localhost:11434"
+)
 
 // configTOML is the on-disk representation. go-toml v2 cannot round-trip
 // *time.Time (it marshals as a quoted string but then refuses to unmarshal
@@ -27,6 +37,10 @@ type configTOML struct {
 	GitRemote          string `toml:"git_remote,omitempty"`
 	LastSync           string `toml:"last_sync,omitempty"`
 	AIShortcutProvider string `toml:"ai_shortcut_provider,omitempty"`
+
+	EmbeddingProvider string `toml:"embedding_provider,omitempty"`
+	EmbeddingModel    string `toml:"embedding_model,omitempty"`
+	OllamaURL         string `toml:"ollama_url,omitempty"`
 }
 
 func configPath() string {
@@ -51,9 +65,26 @@ func loadConfig() (Config, error) {
 		Vault:              ct.Vault,
 		GitRemote:          ct.GitRemote,
 		AIShortcutProvider: ct.AIShortcutProvider,
+		EmbeddingProvider:  ct.EmbeddingProvider,
+		EmbeddingModel:     ct.EmbeddingModel,
+		OllamaURL:          ct.OllamaURL,
 	}
 	if cfg.AIShortcutProvider == "" {
 		cfg.AIShortcutProvider = defaultAIShortcutProvider
+	}
+	if cfg.EmbeddingProvider == "" {
+		cfg.EmbeddingProvider = defaultEmbeddingProvider
+	}
+	if cfg.EmbeddingModel == "" {
+		switch cfg.EmbeddingProvider {
+		case "ollama":
+			cfg.EmbeddingModel = defaultEmbeddingModelOllama
+		default:
+			cfg.EmbeddingModel = defaultEmbeddingModelOpenRouter
+		}
+	}
+	if cfg.OllamaURL == "" {
+		cfg.OllamaURL = defaultOllamaURL
 	}
 	if ct.LastSync != "" {
 		t, err := time.Parse(time.RFC3339, ct.LastSync)
@@ -70,6 +101,9 @@ func saveConfig(cfg Config) error {
 		Vault:              cfg.Vault,
 		GitRemote:          cfg.GitRemote,
 		AIShortcutProvider: cfg.AIShortcutProvider,
+		EmbeddingProvider:  cfg.EmbeddingProvider,
+		EmbeddingModel:     cfg.EmbeddingModel,
+		OllamaURL:          cfg.OllamaURL,
 	}
 	if cfg.LastSync != nil {
 		ct.LastSync = cfg.LastSync.Format(time.RFC3339)

@@ -117,6 +117,49 @@ func TestLoadConfig_AIShortcutProviderDefault(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_EmbeddingDefaults(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(dir+"/clipad", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/clipad/config.toml", []byte(`vault = "/tmp/v"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EmbeddingProvider != "openrouter" {
+		t.Errorf("EmbeddingProvider = %q, want openrouter", cfg.EmbeddingProvider)
+	}
+	if cfg.EmbeddingModel != "qwen/qwen3-embedding-8b" {
+		t.Errorf("EmbeddingModel = %q", cfg.EmbeddingModel)
+	}
+	if cfg.OllamaURL != "http://localhost:11434" {
+		t.Errorf("OllamaURL = %q", cfg.OllamaURL)
+	}
+}
+
+func TestLoadConfig_OllamaProviderDefaultsModel(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(dir+"/clipad", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	contents := "vault = \"/tmp/v\"\nembedding_provider = \"ollama\"\n"
+	if err := os.WriteFile(dir+"/clipad/config.toml", []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EmbeddingModel != "nomic-embed-text" {
+		t.Errorf("EmbeddingModel = %q, want nomic-embed-text", cfg.EmbeddingModel)
+	}
+}
+
 func TestSaveAndLoadConfig_GitSyncEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
