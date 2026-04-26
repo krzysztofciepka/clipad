@@ -131,6 +131,31 @@ func TestOllamaEmbeddings_HappyPath(t *testing.T) {
 	}
 }
 
+func TestNewEmbeddingClient_Ollama(t *testing.T) {
+	cfg := Config{EmbeddingProvider: "ollama", EmbeddingModel: "nomic-embed-text", OllamaURL: "http://localhost:11434"}
+	c, err := newEmbeddingClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.(*OllamaEmbeddings); !ok {
+		t.Errorf("got %T, want *OllamaEmbeddings", c)
+	}
+	if c.Model() != "nomic-embed-text" {
+		t.Errorf("Model() = %q", c.Model())
+	}
+}
+
+func TestNewEmbeddingClient_UnknownProvider(t *testing.T) {
+	cfg := Config{EmbeddingProvider: "bogus"}
+	_, err := newEmbeddingClient(cfg)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown embedding_provider") {
+		t.Errorf("error = %v", err)
+	}
+}
+
 func TestOpenRouterEmbeddings_AuthError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
