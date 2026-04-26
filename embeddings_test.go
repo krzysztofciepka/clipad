@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -46,5 +47,67 @@ func TestOpenRouterEmbeddings_HappyPath(t *testing.T) {
 	}
 	if e.Dim() != 3 {
 		t.Errorf("Dim() = %d, want 3", e.Dim())
+	}
+}
+
+func TestOpenRouterEmbeddings_Batches(t *testing.T) {
+	calls := 0
+	totalInputs := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var req struct {
+			Input []string `json:"input"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		totalInputs += len(req.Input)
+		out := struct {
+			Data []struct {
+				Embedding []float32 `json:"embedding"`
+			} `json:"data"`
+		}{}
+		for range req.Input {
+			out.Data = append(out.Data, struct {
+				Embedding []float32 `json:"embedding"`
+			}{Embedding: []float32{0, 0, 1}})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+
+	e := &OpenRouterEmbeddings{BaseURL: srv.URL, APIKey: "k", ModelName: "m"}
+	inputs := make([]string, 101)
+	for i := range inputs {
+		inputs[i] = "x"
+	}
+	got, err := e.Embed(context.Background(), inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Errorf("HTTP calls = %d, want 2", calls)
+	}
+	if totalInputs != 101 {
+		t.Errorf("total inputs = %d, want 101", totalInputs)
+	}
+	if len(got) != 101 {
+		t.Errorf("vectors = %d, want 101", len(got))
+	}
+}
+
+func TestOpenRouterEmbeddings_AuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"bad key"}`))
+	}))
+	defer srv.Close()
+
+	e := &OpenRouterEmbeddings{BaseURL: srv.URL, APIKey: "k", ModelName: "m"}
+	_, err := e.Embed(context.Background(), []string{"x"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Errorf("error = %v, want HTTP 401 mention", err)
 	}
 }
