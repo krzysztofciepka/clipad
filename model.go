@@ -1464,28 +1464,75 @@ func (m *model) recalcLayout() {
 
 	const minTreeWidth = 20
 
+	chatWidth := 0
+	if m.chatOpen {
+		chatWidth = m.width * 3 / 10
+		if chatWidth < 40 {
+			chatWidth = 40
+		}
+		if chatWidth > m.width/2 {
+			chatWidth = m.width / 2
+		}
+	}
+
 	// Hide tree when narrow terminal can't fit it, or when user has toggled
 	// it off via Ctrl+B (per-session, not persisted).
-	if m.treeHidden || m.width < minTreeWidth+10 {
+	if m.treeHidden || m.width < minTreeWidth+10+chatWidth {
 		m.treeWidth = 0
-		m.editorWidth = m.width
 	} else {
 		m.treeWidth = m.width / 4
 		if m.treeWidth < minTreeWidth {
 			m.treeWidth = minTreeWidth
 		}
-		m.editorWidth = m.width - m.treeWidth - 1 // -1 for tree panel's right border
-		if m.editorWidth < 10 {
-			m.editorWidth = 10
-			m.treeWidth = m.width - m.editorWidth - 1
+	}
+
+	editorWidth := m.width - m.treeWidth - chatWidth
+	if m.treeWidth > 0 {
+		editorWidth-- // tree right border
+	}
+	if chatWidth > 0 {
+		editorWidth-- // chat left border
+	}
+	if editorWidth < 10 {
+		if m.treeWidth > 0 {
+			m.treeWidth = 0
+			editorWidth = m.width - chatWidth
+			if chatWidth > 0 {
+				editorWidth--
+			}
+		}
+		if editorWidth < 10 && chatWidth > 0 {
+			chatWidth = 0
+			m.chatOpen = false
+			editorWidth = m.width
 		}
 	}
+	m.editorWidth = editorWidth
+	m.chatWidth = chatWidth
 
 	m.tree.width = m.treeWidth
 	m.tree.height = m.treeHeight
 	m.tree.clampOffset()
 
 	setEditorSize(&m.editor, m.editorWidth, m.editorHeight)
+
+	if m.chatOpen {
+		innerW := m.chatWidth - 4
+		if innerW < 1 {
+			innerW = 1
+		}
+		innerH := m.editorHeight - 4
+		if innerH < 1 {
+			innerH = 1
+		}
+		if m.chatViewport.Width == 0 {
+			m.chatViewport = viewport.New(innerW, innerH)
+		} else {
+			m.chatViewport.Width = innerW
+			m.chatViewport.Height = innerH
+		}
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW))
+	}
 
 	if m.inputMode == inputPluginDiff {
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
@@ -1576,12 +1623,15 @@ func (m model) View() string {
 			Render(m.editor.View())
 	}
 
-	var mainView string
+	var columns []string
 	if m.treeWidth > 0 {
-		mainView = lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightView)
-	} else {
-		mainView = rightView
+		columns = append(columns, treeView)
 	}
+	columns = append(columns, rightView)
+	if m.chatOpen && m.chatWidth > 0 {
+		columns = append(columns, chatPanelView(m.chatViewport, m.chatInput.View(), m.chatMode, m.chatWidth, m.editorHeight))
+	}
+	mainView := lipgloss.JoinHorizontal(lipgloss.Top, columns...)
 
 	line, col := editorCursorPos(m.editor)
 	filename := ""
