@@ -61,6 +61,7 @@ const (
 	inputGitRemote
 	inputRename
 	inputHelp
+	inputVaultSearch
 )
 
 type model struct {
@@ -149,6 +150,30 @@ type model struct {
 
 	// Help modal
 	helpViewport viewport.Model
+
+	// Vault index
+	indexer       *Index
+	indexerStatus string // status bar string; "" when idle
+
+	// Vault search modal (Ctrl+Shift+F)
+	vaultSearchInput   textinput.Model
+	vaultSearchResults []searchResult
+	vaultSearchCursor  int
+	vaultSearchOffset  int
+	vaultSearchPending bool
+	vaultSearchToken   int64
+
+	// Chat panel (Ctrl+Shift+A)
+	chatOpen         bool
+	chatWidth        int
+	chatMode         chatModeT
+	chatTurns        []chatTurn
+	chatInput        textinput.Model
+	chatViewport     viewport.Model
+	chatStreaming    bool
+	chatActiveChunks <-chan string
+	chatCancel       context.CancelFunc
+	chatCurrentCites []citation
 }
 
 func newModel(vault string, plugins []Plugin, activeShortcutProvider string) model {
@@ -192,6 +217,14 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider string) mod
 	gr.Placeholder = "git@github.com:user/vault.git"
 	gr.CharLimit = 512
 
+	vsi := textinput.New()
+	vsi.Placeholder = "Search note contents…"
+	vsi.CharLimit = 256
+
+	ci := textinput.New()
+	ci.Placeholder = "Ask your vault…"
+	ci.CharLimit = 1000
+
 	m := model{
 		vault:                  vault,
 		activePanel:            treePanel,
@@ -210,6 +243,8 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider string) mod
 		shortcutEditing:        -1,
 		gitRemoteInput:         gr,
 		activeShortcutProvider: activeShortcutProvider,
+		vaultSearchInput:       vsi,
+		chatInput:              ci,
 	}
 
 	root, err := buildTree(vault)
@@ -243,7 +278,11 @@ func (m *model) aiInputContent() (content string, onSelection bool) {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, watchVault(m.vault), autoSaveTick(), gitSyncCheckImmediate())
+	cmds := []tea.Cmd{textarea.Blink, watchVault(m.vault), autoSaveTick(), gitSyncCheckImmediate()}
+	if m.indexer != nil {
+		cmds = append(cmds, startInitialIndex(m.indexer, m.vault))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -252,7 +291,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case fileChangedMsg:
 		m.refreshTree()
-		return m, watchVault(m.vault)
+		cmds := []tea.Cmd{watchVault(m.vault)}
+		if m.indexer != nil {
+			cmds = append(cmds, startInitialIndex(m.indexer, m.vault))
+		}
+		return m, tea.Batch(cmds...)
+
+	case fileDeletedMsg:
+		m.refreshTree()
+		cmds := []tea.Cmd{watchVault(m.vault)}
+		if m.indexer != nil {
+			cmds = append(cmds, removeFileFromIndexCmd(m.indexer, msg.Path))
+		}
+		return m, tea.Batch(cmds...)
+
+	case indexProgressMsg:
+		m.indexerStatus = fmt.Sprintf("[idx %d/%d]", msg.done, msg.total)
+		return m, nil
+
+	case indexDoneMsg:
+		if msg.err != nil {
+			m.indexerStatus = "[idx error]"
+			m.errMsg = "Index: " + msg.err.Error()
+		} else {
+			m.indexerStatus = ""
+		}
+		return m, nil
+
+	case indexFileMsg:
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

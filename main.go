@@ -147,7 +147,23 @@ func main() {
 		&BlackboxPlugin{},
 		&OpenRouterPlugin{},
 	}
+
+	emb, embErr := newEmbeddingClient(cfg)
+	var idx *Index
+	if embErr == nil {
+		idx, _ = OpenIndex(indexDBPath(), cfg.Vault, emb)
+	}
+	defer func() {
+		if idx != nil {
+			idx.Close()
+		}
+	}()
+
 	m := newModel(cfg.Vault, plugins, cfg.AIShortcutProvider)
+	m.indexer = idx
+	if embErr != nil {
+		m.errMsg = "Embeddings disabled: " + embErr.Error()
+	}
 
 	// Create welcome note if vault is empty (after tree was already built in newModel)
 	if m.treeRoot != nil && len(collectFiles(m.treeRoot)) == 0 {
