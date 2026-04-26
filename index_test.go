@@ -200,3 +200,58 @@ func TestRebuildFile_OnlyChangedChunkReEmbeds(t *testing.T) {
 		t.Errorf("found = %d, want 1 row containing MODIFIED", found)
 	}
 }
+
+func TestRemoveFile(t *testing.T) {
+	vault := t.TempDir()
+	pathA := writeFile(t, vault, "a.md", "x.\n\ny.")
+	pathB := writeFile(t, vault, "b.md", "z.")
+	emb := onehotEmbedder("m", 8)
+	idx, _ := OpenIndex(":memory:", vault, emb)
+	defer idx.Close()
+
+	_ = idx.RebuildFile(context.Background(), pathA)
+	_ = idx.RebuildFile(context.Background(), pathB)
+
+	if err := idx.RemoveFile(context.Background(), pathA); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = ?`, "a.md").Scan(&n)
+	if n != 0 {
+		t.Errorf("a.md rows after remove = %d, want 0", n)
+	}
+	_ = idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = ?`, "b.md").Scan(&n)
+	if n == 0 {
+		t.Errorf("b.md rows after remove = 0, want >0")
+	}
+}
+
+func TestSearch_RanksByCosine(t *testing.T) {
+	vault := t.TempDir()
+	a := writeFile(t, vault, "a.md", "alpha")
+	b := writeFile(t, vault, "b.md", "beta")
+	c := writeFile(t, vault, "c.md", "gamma")
+	emb := onehotEmbedder("m", 16)
+	idx, _ := OpenIndex(":memory:", vault, emb)
+	defer idx.Close()
+
+	for _, p := range []string{a, b, c} {
+		if err := idx.RebuildFile(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, err := idx.Search(context.Background(), "alpha", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("len(res) = %d, want 2", len(res))
+	}
+	if res[0].Path != "a.md" {
+		t.Errorf("top result = %q, want a.md", res[0].Path)
+	}
+	if res[0].Score < res[1].Score {
+		t.Errorf("scores not descending: %v then %v", res[0].Score, res[1].Score)
+	}
+}

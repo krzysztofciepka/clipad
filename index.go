@@ -278,6 +278,79 @@ func (idx *Index) RebuildFile(ctx context.Context, absPath string) error {
 	return tx.Commit()
 }
 
+// Result is a single search hit with its score.
+type Result struct {
+	Path      string  // relative to vault
+	StartLine int
+	EndLine   int
+	Text      string
+	Score     float32
+}
+
+// Search embeds the query and returns the top-k chunks by cosine similarity,
+// restricted to rows that match the embedder's current model.
+func (idx *Index) Search(ctx context.Context, query string, k int) ([]Result, error) {
+	if idx.embedder == nil {
+		return nil, errors.New("index: no embedder configured")
+	}
+	if k <= 0 {
+		return nil, nil
+	}
+	vecs, err := idx.embedder.Embed(ctx, []string{query})
+	if err != nil {
+		return nil, fmt.Errorf("embed query: %w", err)
+	}
+	if len(vecs) != 1 {
+		return nil, fmt.Errorf("embed query: got %d vectors", len(vecs))
+	}
+	q := vecs[0]
+	model := idx.embedder.Model()
+
+	rows, err := idx.db.QueryContext(ctx,
+		`SELECT file_path, start_line, end_line, text, embedding FROM chunks WHERE model = ?`, model)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type scored struct {
+		r     Result
+		score float32
+	}
+	var all []scored
+	for rows.Next() {
+		var r Result
+		var blob []byte
+		if err := rows.Scan(&r.Path, &r.StartLine, &r.EndLine, &r.Text, &blob); err != nil {
+			return nil, err
+		}
+		v := decodeEmbedding(blob)
+		s := cosine(q, v)
+		r.Score = s
+		all = append(all, scored{r: r, score: s})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Sort by descending score (simple selection — vault-scale).
+	for i := range all {
+		for j := i + 1; j < len(all); j++ {
+			if all[j].score > all[i].score {
+				all[i], all[j] = all[j], all[i]
+			}
+		}
+	}
+	if k > len(all) {
+		k = len(all)
+	}
+	out := make([]Result, k)
+	for i := 0; i < k; i++ {
+		out[i] = all[i].r
+	}
+	return out, nil
+}
+
 // RemoveFile deletes all chunks for the file at absPath.
 func (idx *Index) RemoveFile(ctx context.Context, absPath string) error {
 	rel, err := idx.relPath(absPath)
