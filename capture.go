@@ -158,21 +158,55 @@ func captureAppendCmd(inboxPath, line string, reloadOpen bool) tea.Cmd {
 	}
 }
 
+// appendLineToEditor appends a single bullet line to the in-memory
+// editor buffer, ensuring the result is well-formed:
+//   - existing buffer is given a trailing "\n" if it lacks one
+//   - the new line is added with its own trailing "\n"
+//   - the cursor's logical (row, col) is preserved across the
+//     SetValue call (clamped to the new content bounds)
+//
+// The editor's existing isDirty mechanism flags the buffer as dirty
+// automatically once SetValue runs.
+func (m *model) appendLineToEditor(line string) {
+	row, col := editorCursorPos(m.editor)
+
+	old := m.editor.Value()
+	var b strings.Builder
+	b.WriteString(old)
+	if len(old) > 0 && !strings.HasSuffix(old, "\n") {
+		b.WriteByte('\n')
+	}
+	b.WriteString(line)
+	b.WriteByte('\n')
+
+	m.editor.SetValue(b.String())
+	m.editor.MoveTo(row, col)
+}
+
 // dispatchCapture decides what to do with the captured text based on
 // whether inbox.md is currently open in the editor and dirty.
 //
 // Branches:
 //   - inbox not open → disk write only
-//   - inbox open + clean → disk write + editor reload (next task)
-//   - inbox open + dirty → in-memory editor append (next task)
+//   - inbox open + clean → disk write + editor reload
+//   - inbox open + dirty → in-memory editor append, no disk write
 func (m model) dispatchCapture(text string) (tea.Model, tea.Cmd) {
 	line := formatCaptureLine(time.Now(), text)
 	inboxPath := resolveInboxPath(m.vault, m.inboxPath)
 
-	if m.currentFile != inboxPath {
-		// Inbox is not the currently open file — just disk write.
-		return m, captureAppendCmd(inboxPath, line, false)
+	if m.currentFile == inboxPath {
+		if m.isDirty() {
+			// Inbox is open with unsaved edits. Append in-memory
+			// only; user keeps their dirty state and saves later
+			// with Ctrl+S. The editor stays dirty automatically
+			// because cleanContent is unchanged.
+			m.appendLineToEditor(line)
+			return m, nil
+		}
+		// Inbox is open and clean — disk write + reload editor on
+		// completion (the captureAppendedMsg handler does the reload).
+		return m, captureAppendCmd(inboxPath, line, true)
 	}
-	// Other branches added in the next task.
-	return m, captureAppendCmd(inboxPath, line, true)
+	// Inbox is not open — just disk write; no reload needed.
+	return m, captureAppendCmd(inboxPath, line, false)
 }

@@ -334,6 +334,123 @@ func TestHandleCapture_WhitespaceOnlyEnterCancelsSilently(t *testing.T) {
 	}
 }
 
+func TestCapture_OpenCleanInbox_WritesAndReloads(t *testing.T) {
+	m := newTestModel(t)
+	inboxPath := filepath.Join(m.vault, "inbox.md")
+	if err := os.WriteFile(inboxPath, []byte("- old — first\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	m.currentFile = inboxPath
+	m.editor.SetValue("- old — first\n")
+	m.cleanContent = "- old — first\n"
+	if m.isDirty() {
+		t.Fatal("editor should be clean after seed")
+	}
+
+	m.inputMode = inputCapture
+	m.captureInput.SetValue("new entry")
+
+	next, cmd := m.handleCapture(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+	if cmd == nil {
+		t.Fatal("expected cmd")
+	}
+
+	msg := cmd().(captureAppendedMsg)
+	if msg.err != nil {
+		t.Fatalf("append err: %v", msg.err)
+	}
+	if !msg.reloadOpen {
+		t.Error("reloadOpen = false, want true (inbox is open and was clean)")
+	}
+
+	data, _ := os.ReadFile(inboxPath)
+	if !strings.Contains(string(data), "- old — first\n") {
+		t.Errorf("disk missing original line: %q", string(data))
+	}
+	if !strings.Contains(string(data), " — new entry\n") {
+		t.Errorf("disk missing new line: %q", string(data))
+	}
+
+	next2, _ := nm.Update(msg)
+	nm2 := next2.(model)
+	if nm2.editor.Value() != string(data) {
+		t.Errorf("editor not reloaded: got %q, want %q", nm2.editor.Value(), string(data))
+	}
+	if nm2.cleanContent != string(data) {
+		t.Error("cleanContent not updated; editor would be dirty")
+	}
+}
+
+func TestCapture_OpenDirtyInbox_AppendsInMemory(t *testing.T) {
+	m := newTestModel(t)
+	inboxPath := filepath.Join(m.vault, "inbox.md")
+	original := "- old — first\n"
+	if err := os.WriteFile(inboxPath, []byte(original), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	m.currentFile = inboxPath
+	m.editor.SetValue("- old — first\nDIRTY EDIT\n")
+	m.cleanContent = original
+	if !m.isDirty() {
+		t.Fatal("editor should be dirty after the edit")
+	}
+
+	m.inputMode = inputCapture
+	m.captureInput.SetValue("from capture")
+
+	next, cmd := m.handleCapture(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+	if cmd != nil {
+		t.Errorf("expected nil cmd (no disk write), got %v", cmd)
+	}
+
+	data, _ := os.ReadFile(inboxPath)
+	if string(data) != original {
+		t.Errorf("disk modified; got %q, want %q", string(data), original)
+	}
+
+	got := nm.editor.Value()
+	if !strings.Contains(got, "DIRTY EDIT") {
+		t.Errorf("editor lost dirty edit: %q", got)
+	}
+	if !strings.Contains(got, " — from capture") {
+		t.Errorf("editor missing captured line: %q", got)
+	}
+
+	if !nm.isDirty() {
+		t.Error("editor should still be dirty after in-memory capture")
+	}
+}
+
+func TestCapture_OpenCleanInbox_PreservesCursor(t *testing.T) {
+	m := newTestModel(t)
+	inboxPath := filepath.Join(m.vault, "inbox.md")
+	original := "line zero\nline one\nline two\n"
+	os.WriteFile(inboxPath, []byte(original), 0o644)
+
+	m.currentFile = inboxPath
+	m.editor.SetValue(original)
+	m.cleanContent = original
+	m.editor.MoveTo(2, 3)
+
+	m.inputMode = inputCapture
+	m.captureInput.SetValue("appended")
+
+	next, cmd := m.handleCapture(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+	msg := cmd().(captureAppendedMsg)
+	next2, _ := nm.Update(msg)
+	nm2 := next2.(model)
+
+	gotLine, gotCol := editorCursorPos(nm2.editor)
+	if gotLine != 2 || gotCol != 3 {
+		t.Errorf("cursor = (%d, %d), want (2, 3)", gotLine, gotCol)
+	}
+}
+
 func TestCapture_ClosedInbox_WritesToDisk(t *testing.T) {
 	m := newTestModel(t)
 	m.inputMode = inputCapture
