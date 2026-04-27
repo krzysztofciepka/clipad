@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	Vault              string     `toml:"vault"`
+	InboxPath          string     `toml:"inbox_path,omitempty"`
 	GitRemote          string     `toml:"git_remote,omitempty"`
 	LastSync           *time.Time `toml:"last_sync,omitempty"`
 	AIShortcutProvider string     `toml:"ai_shortcut_provider,omitempty"`
@@ -34,6 +35,7 @@ const (
 // string and convert at the boundary.
 type configTOML struct {
 	Vault              string `toml:"vault"`
+	InboxPath          string `toml:"inbox_path,omitempty"`
 	GitRemote          string `toml:"git_remote,omitempty"`
 	LastSync           string `toml:"last_sync,omitempty"`
 	AIShortcutProvider string `toml:"ai_shortcut_provider,omitempty"`
@@ -63,6 +65,7 @@ func loadConfig() (Config, error) {
 	}
 	cfg := Config{
 		Vault:              ct.Vault,
+		InboxPath:          ct.InboxPath,
 		GitRemote:          ct.GitRemote,
 		AIShortcutProvider: ct.AIShortcutProvider,
 		EmbeddingProvider:  ct.EmbeddingProvider,
@@ -99,6 +102,7 @@ func loadConfig() (Config, error) {
 func saveConfig(cfg Config) error {
 	ct := configTOML{
 		Vault:              cfg.Vault,
+		InboxPath:          cfg.InboxPath,
 		GitRemote:          cfg.GitRemote,
 		AIShortcutProvider: cfg.AIShortcutProvider,
 		EmbeddingProvider:  cfg.EmbeddingProvider,

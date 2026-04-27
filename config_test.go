@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -178,5 +179,42 @@ func TestSaveAndLoadConfig_GitSyncEmpty(t *testing.T) {
 	}
 	if loaded.LastSync != nil {
 		t.Errorf("loaded.LastSync = %v, want nil", loaded.LastSync)
+	}
+}
+
+func TestConfig_InboxPathRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg := Config{
+		Vault:     "/tmp/vault",
+		InboxPath: "journals/inbox.md",
+	}
+	if err := saveConfig(cfg); err != nil {
+		t.Fatalf("saveConfig: %v", err)
+	}
+
+	loaded, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if loaded.InboxPath != "journals/inbox.md" {
+		t.Errorf("InboxPath = %q, want %q", loaded.InboxPath, "journals/inbox.md")
+	}
+}
+
+func TestConfig_InboxPathOmittedWhenEmpty(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg := Config{Vault: "/tmp/vault"}
+	if err := saveConfig(cfg); err != nil {
+		t.Fatalf("saveConfig: %v", err)
+	}
+
+	data, err := os.ReadFile(configPath())
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if strings.Contains(string(data), "inbox_path") {
+		t.Errorf("config contains inbox_path when empty: %q", string(data))
 	}
 }
