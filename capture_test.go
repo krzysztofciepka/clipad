@@ -271,3 +271,16 @@ func TestWriteNewFile_ParentMissingReturnsError(t *testing.T) {
 		t.Errorf("err = %v, want a 'no such file' error, not ErrExist", err)
 	}
 }
+
+func TestCaptureView_ContainsInputAndPath(t *testing.T) {
+	out := captureView("typed text", "/vault/inbox.md", 80, 24)
+	if out == "" {
+		t.Fatal("expected non-empty render")
+	}
+	if !strings.Contains(out, "typed text") {
+		t.Errorf("render missing input text: %q", out)
+	}
+	if !strings.Contains(out, "/vault/inbox.md") {
+		t.Errorf("render missing inbox path: %q", out)
+	}
+}

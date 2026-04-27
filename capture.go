@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // resolveInboxPath converts the raw config value into an absolute path
@@ -87,4 +89,23 @@ func writeNewFile(path, content string) error {
 	defer f.Close()
 	_, err = f.WriteString(content)
 	return err
+}
+
+var captureModalStyle = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("62")).
+	Padding(0, 1)
+
+// captureView renders the centered capture modal: a title line
+// "Quick capture → <inbox path>" above the textarea contents.
+// Caller is responsible for wrapping the result with lipgloss.Place
+// to center it within the editor pane.
+func captureView(textareaView, inboxPath string, screenWidth, screenHeight int) string {
+	title := "Quick capture → " + inboxPath
+	body := title + "\n\n" + textareaView + "\n\nEnter: save · Shift+Enter: newline · Esc: cancel"
+	w := 60
+	if screenWidth > 0 && w > screenWidth-4 {
+		w = screenWidth - 4
+	}
+	return captureModalStyle.Width(w).Render(body)
 }
