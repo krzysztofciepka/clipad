@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -108,4 +109,38 @@ func captureView(textareaView, inboxPath string, screenWidth, screenHeight int) 
 		w = screenWidth - 4
 	}
 	return captureModalStyle.Width(w).Render(body)
+}
+
+// handleCapture handles key events while inputMode == inputCapture.
+//
+// Esc cancels (modal closes; underlying state untouched).
+// Plain Enter submits — empty/whitespace-only input is a silent cancel.
+// All other keys (including Shift+Enter for a newline) fall through
+// to textarea.Update so the textarea handles them natively.
+func (m model) handleCapture(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.inputMode = inputNone
+		m.captureInput.Blur()
+		return m, nil
+
+	case "enter":
+		text := strings.TrimRight(m.captureInput.Value(), "\n")
+		m.inputMode = inputNone
+		m.captureInput.Blur()
+		if strings.TrimSpace(text) == "" {
+			return m, nil
+		}
+		return m.dispatchCapture(text)
+	}
+
+	var cmd tea.Cmd
+	m.captureInput, cmd = m.captureInput.Update(msg)
+	return m, cmd
+}
+
+// dispatchCapture is filled in by Task 10. Stub returns no-op so
+// handleCapture compiles.
+func (m model) dispatchCapture(text string) (tea.Model, tea.Cmd) {
+	return m, nil
 }

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestResolveInboxPath_EmptyDefaultsToInboxMd(t *testing.T) {
@@ -282,5 +284,52 @@ func TestCaptureView_ContainsInputAndPath(t *testing.T) {
 	}
 	if !strings.Contains(out, "/vault/inbox.md") {
 		t.Errorf("render missing inbox path: %q", out)
+	}
+}
+
+func TestHandleCapture_EscClosesModal(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputCapture
+	m.captureInput.SetValue("not committed")
+
+	next, cmd := m.handleCapture(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if cmd != nil {
+		t.Errorf("expected nil cmd, got %v", cmd)
+	}
+}
+
+func TestHandleCapture_EmptyEnterCancelsSilently(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputCapture
+
+	next, cmd := m.handleCapture(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if cmd != nil {
+		t.Errorf("expected nil cmd, got %v", cmd)
+	}
+}
+
+func TestHandleCapture_WhitespaceOnlyEnterCancelsSilently(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputCapture
+	m.captureInput.SetValue("   \n\t  ")
+
+	next, cmd := m.handleCapture(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if cmd != nil {
+		t.Errorf("expected nil cmd, got %v", cmd)
 	}
 }
