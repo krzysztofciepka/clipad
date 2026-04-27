@@ -63,6 +63,8 @@ const (
 	inputRename
 	inputHelp
 	inputVaultSearch
+	inputCapture
+	inputDelegateName
 )
 
 type model struct {
@@ -175,9 +177,14 @@ type model struct {
 	chatActiveChunks <-chan string
 	chatCancel       context.CancelFunc
 	chatCurrentCites []citation
+
+	// Quick capture (Ctrl+J) and delegate-to-new-note (Ctrl+O)
+	inboxPath     string         // raw config value; "" → default "inbox.md"
+	captureInput  textarea.Model // multi-line, Shift+Enter for newline
+	delegateInput textinput.Model
 }
 
-func newModel(vault string, plugins []Plugin, activeShortcutProvider string) model {
+func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath string) model {
 	fi := textinput.New()
 	fi.Placeholder = "filter..."
 	fi.CharLimit = 256
@@ -226,6 +233,18 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider string) mod
 	ci.Placeholder = "Ask your vault…"
 	ci.CharLimit = 1000
 
+	cap := textarea.New()
+	cap.Placeholder = "Quick capture (Enter saves, Shift+Enter for newline, Esc cancels)"
+	cap.CharLimit = 0
+	cap.SetWidth(56)
+	cap.SetHeight(6)
+	cap.ShowLineNumbers = false
+
+	del := textinput.New()
+	del.Placeholder = "filename (no .md needed)"
+	del.CharLimit = 200
+	del.Prompt = "Move to: "
+
 	m := model{
 		vault:                  vault,
 		activePanel:            treePanel,
@@ -246,6 +265,9 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider string) mod
 		activeShortcutProvider: activeShortcutProvider,
 		vaultSearchInput:       vsi,
 		chatInput:              ci,
+		captureInput:           cap,
+		delegateInput:          del,
+		inboxPath:              inboxPath,
 	}
 
 	root, err := buildTree(vault)

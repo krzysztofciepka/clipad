@@ -160,7 +160,7 @@ func main() {
 		}
 	}()
 
-	m := newModel(cfg.Vault, plugins, cfg.AIShortcutProvider)
+	m := newModel(cfg.Vault, plugins, cfg.AIShortcutProvider, cfg.InboxPath)
 	m.indexer = idx
 	if embErr != nil {
 		m.errMsg = "Embeddings disabled: " + embErr.Error()

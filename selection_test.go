@@ -601,7 +601,7 @@ func TestOpenFileClearsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := newModel(dir, nil, "")
+	m := newModel(dir, nil, "", "")
 	typeRunes(&m.editor, "typed")
 	if len(m.editor.history.undoStack) == 0 {
 		t.Fatal("precondition: undo stack should have an entry after typing")
@@ -622,7 +622,7 @@ func TestFindReplaceIsUndoableAsOp(t *testing.T) {
 	if err := os.WriteFile(notePath, []byte("foo bar foo"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m := newModel(dir, nil, "")
+	m := newModel(dir, nil, "", "")
 	m.openFile(notePath)
 	m.replaceSearchTerm = "foo"
 	m.replaceWithInput.SetValue("BAZ")

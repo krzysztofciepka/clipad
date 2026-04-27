@@ -10,7 +10,7 @@ func TestHandleTreeKeys_EnterOnAddNote_TriggersNewNote(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	vault := t.TempDir()
-	m := newModel(vault, nil, "")
+	m := newModel(vault, nil, "", "")
 	m.width = 100
 	m.height = 30
 	m.recalcLayout()

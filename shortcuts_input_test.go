@@ -14,7 +14,7 @@ func newTestModel(t *testing.T) model {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	vault := t.TempDir()
-	return newModel(vault, nil, "")
+	return newModel(vault, nil, "", "")
 }
 
 func TestShortcutFlow_Create_GoesThroughDescriptionStep(t *testing.T) {

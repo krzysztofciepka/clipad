@@ -11,7 +11,7 @@ func newToggleTestModel(t *testing.T, width int) model {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	vault := t.TempDir()
-	m := newModel(vault, nil, "")
+	m := newModel(vault, nil, "", "")
 	m.width = width
 	m.height = 30
 	m.recalcLayout()

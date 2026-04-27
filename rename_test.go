@@ -8,7 +8,7 @@ import (
 
 func newRenameTestModel(t *testing.T, vault string) model {
 	t.Helper()
-	m := newModel(vault, nil, "")
+	m := newModel(vault, nil, "", "")
 	return m
 }
 
