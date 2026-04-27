@@ -152,6 +152,48 @@ func TestRunGitSync_RemoteChanges(t *testing.T) {
 	}
 }
 
+func TestRunGitSync_RemoteDelete_NoConflict(t *testing.T) {
+	remote := initBareRemote(t)
+	local := initLocalWithRemote(t, remote)
+
+	// Seed a file via "other" machine, then delete it via "other".
+	other := initLocalWithRemote(t, remote)
+	os.WriteFile(filepath.Join(other, "doomed.md"), []byte("bye"), 0o644)
+	exec.Command("git", "-C", other, "add", "-A").Run()
+	exec.Command("git", "-C", other, "commit", "-m", "add doomed").Run()
+	exec.Command("git", "-C", other, "push").Run()
+
+	// Pull the seed into local so it has a copy.
+	exec.Command("git", "-C", local, "pull", "--rebase", "origin", "HEAD").Run()
+	if _, err := os.Stat(filepath.Join(local, "doomed.md")); err != nil {
+		t.Fatalf("seed missing locally: %v", err)
+	}
+
+	// Now "other" deletes it and pushes.
+	os.Remove(filepath.Join(other, "doomed.md"))
+	exec.Command("git", "-C", other, "add", "-A").Run()
+	exec.Command("git", "-C", other, "commit", "-m", "delete doomed").Run()
+	exec.Command("git", "-C", other, "push").Run()
+
+	// Local syncs — no local edits, just pulling the deletion.
+	cmd := runGitSync(local, remote)
+	msg := cmd().(gitSyncResultMsg)
+	if msg.err != nil {
+		t.Fatalf("unexpected error: %v", msg.err)
+	}
+	if !msg.pulled {
+		t.Error("pulled = false, want true")
+	}
+	if _, err := os.Stat(filepath.Join(local, "doomed.md")); !os.IsNotExist(err) {
+		t.Errorf("doomed.md should be gone locally; stat err=%v", err)
+	}
+	// No .sync-conflict siblings should exist.
+	matches, _ := filepath.Glob(filepath.Join(local, "*sync-conflict*"))
+	if len(matches) != 0 {
+		t.Errorf("unexpected sync-conflict files: %v", matches)
+	}
+}
+
 func TestRunGitSync_Conflict(t *testing.T) {
 	remote := initBareRemote(t)
 	local := initLocalWithRemote(t, remote)
