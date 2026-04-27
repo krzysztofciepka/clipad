@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // version is overridden at release build time via:
@@ -171,6 +172,13 @@ func main() {
 			[]byte("# Welcome to Clipad\n\nStart writing your notes here.\n"), 0o644)
 		m.refreshTree()
 	}
+	// Detect terminal background once, before tea.Program claims stdin.
+	// Doing this inside glamour.WithAutoStyle() while the alt-screen is
+	// active causes the OSC 11 reply to be delivered to Bubble Tea's
+	// input loop as keyboard runes (visible as "]11;rgb:0000/0000/0000")
+	// and freezes the first preview render until termenv times out.
+	setDarkBackground(termenv.HasDarkBackground())
+
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
