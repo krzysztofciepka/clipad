@@ -227,3 +227,47 @@ func TestEnsureTrailingNewline_OnlyNewline(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "\n")
 	}
 }
+
+func TestWriteNewFile_CreatesIfMissing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "new.md")
+
+	if err := writeNewFile(path, "hello\n"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(data) != "hello\n" {
+		t.Errorf("got %q, want %q", string(data), "hello\n")
+	}
+}
+
+func TestWriteNewFile_RefusesIfExists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exists.md")
+	os.WriteFile(path, []byte("preexisting"), 0o644)
+
+	err := writeNewFile(path, "should not overwrite")
+	if !os.IsExist(err) {
+		t.Fatalf("err = %v, want os.IsExist", err)
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "preexisting" {
+		t.Errorf("file overwritten: %q", string(data))
+	}
+}
+
+func TestWriteNewFile_ParentMissingReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nope", "child.md")
+
+	err := writeNewFile(path, "x")
+	if err == nil {
+		t.Error("expected error when parent dir is missing")
+	}
+	if os.IsExist(err) {
+		t.Errorf("err = %v, want a 'no such file' error, not ErrExist", err)
+	}
+}

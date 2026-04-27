@@ -74,3 +74,17 @@ func ensureTrailingNewline(s string) string {
 	}
 	return s + "\n"
 }
+
+// writeNewFile writes content to path with O_CREATE|O_EXCL semantics:
+// returns os.ErrExist if the file already exists. This is the atomic
+// create-only primitive used by the delegate flow — it survives a
+// TOCTOU race between the os.Stat collision check and the actual write.
+func writeNewFile(path, content string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(content)
+	return err
+}
