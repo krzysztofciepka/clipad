@@ -778,6 +778,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.chatInput.Focus()
 			return m, cmd
 
+		case "ctrl+j":
+			if m.vault == "" {
+				m.errMsg = "no vault configured"
+				return m, nil
+			}
+			m.inputMode = inputCapture
+			m.captureInput.Reset()
+			cmd := m.captureInput.Focus()
+			return m, cmd
+
 		case "tab":
 			if m.activePanel == treePanel {
 				m.activePanel = editorPanel
@@ -989,6 +999,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHelp(msg)
 	case inputVaultSearch:
 		return m.handleVaultSearch(msg)
+	case inputCapture:
+		return m.handleCapture(msg)
 	}
 	return m, nil
 }
@@ -1791,6 +1803,13 @@ func (m model) View() string {
 			m.vaultSearchResults,
 			m.vaultSearchCursor,
 			m.vaultSearchOffset,
+			m.editorWidth, m.editorHeight,
+		)
+		rightView = lipgloss.Place(m.editorWidth, m.editorHeight, lipgloss.Center, lipgloss.Center, modal)
+	} else if m.inputMode == inputCapture {
+		modal := captureView(
+			m.captureInput.View(),
+			resolveInboxPath(m.vault, m.inboxPath),
 			m.editorWidth, m.editorHeight,
 		)
 		rightView = lipgloss.Place(m.editorWidth, m.editorHeight, lipgloss.Center, lipgloss.Center, modal)
