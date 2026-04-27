@@ -194,6 +194,40 @@ func TestRunGitSync_RemoteDelete_NoConflict(t *testing.T) {
 	}
 }
 
+func TestRunGitSync_RemoteEditUnrelated_NoConflict(t *testing.T) {
+	remote := initBareRemote(t)
+	local := initLocalWithRemote(t, remote)
+	other := initLocalWithRemote(t, remote)
+
+	// Local modifies an existing tracked file (dirty working tree at
+	// sync time — this is the scenario that triggers the original bug
+	// because `git pull --rebase` aborts on a dirty tree).
+	os.WriteFile(filepath.Join(local, ".gitkeep"), []byte("local edit"), 0o644)
+
+	// Other adds a NEW file (no overlap with local edits) and pushes.
+	os.WriteFile(filepath.Join(other, "remote-only.md"), []byte("remote"), 0o644)
+	exec.Command("git", "-C", other, "add", "-A").Run()
+	exec.Command("git", "-C", other, "commit", "-m", "remote unrelated edit").Run()
+	exec.Command("git", "-C", other, "push").Run()
+
+	// Local syncs.
+	cmd := runGitSync(local, remote)
+	msg := cmd().(gitSyncResultMsg)
+	if msg.err != nil {
+		t.Fatalf("unexpected error: %v", msg.err)
+	}
+	if !msg.pushed {
+		t.Error("pushed = false, want true")
+	}
+	if _, err := os.Stat(filepath.Join(local, "remote-only.md")); err != nil {
+		t.Errorf("remote-only.md missing locally after sync: %v", err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(local, "*sync-conflict*"))
+	if len(matches) != 0 {
+		t.Errorf("unexpected sync-conflict files: %v", matches)
+	}
+}
+
 func TestRunGitSync_Conflict(t *testing.T) {
 	remote := initBareRemote(t)
 	local := initLocalWithRemote(t, remote)
