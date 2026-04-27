@@ -333,3 +333,40 @@ func TestHandleCapture_WhitespaceOnlyEnterCancelsSilently(t *testing.T) {
 		t.Errorf("expected nil cmd, got %v", cmd)
 	}
 }
+
+func TestCapture_ClosedInbox_WritesToDisk(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputCapture
+	m.captureInput.SetValue("hello world")
+	// m.currentFile is "" — inbox is not open
+
+	next, cmd := m.handleCapture(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd for non-empty capture")
+	}
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+
+	resultMsg := cmd().(captureAppendedMsg)
+	if resultMsg.err != nil {
+		t.Fatalf("captureAppendedMsg err: %v", resultMsg.err)
+	}
+	if resultMsg.reloadOpen {
+		t.Errorf("reloadOpen = true, want false (inbox not open)")
+	}
+
+	inboxPath := filepath.Join(m.vault, "inbox.md")
+	data, err := os.ReadFile(inboxPath)
+	if err != nil {
+		t.Fatalf("read inbox: %v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, " — hello world\n") {
+		t.Errorf("inbox content %q does not contain ' — hello world\\n'", got)
+	}
+	if !strings.HasPrefix(got, "- ") {
+		t.Errorf("inbox content %q does not start with bullet", got)
+	}
+}

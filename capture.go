@@ -139,8 +139,40 @@ func (m model) handleCapture(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// dispatchCapture is filled in by Task 10. Stub returns no-op so
-// handleCapture compiles.
+// captureAppendedMsg is emitted by captureAppendCmd after the disk
+// write completes (or fails). Carries enough info for the model to
+// decide whether to reload an open editor view of inbox.md.
+type captureAppendedMsg struct {
+	err        error
+	inboxPath  string
+	reloadOpen bool
+}
+
+// captureAppendCmd performs the actual disk append off the main loop.
+func captureAppendCmd(inboxPath, line string, reloadOpen bool) tea.Cmd {
+	return func() tea.Msg {
+		if err := appendToInboxFile(inboxPath, line); err != nil {
+			return captureAppendedMsg{err: err}
+		}
+		return captureAppendedMsg{inboxPath: inboxPath, reloadOpen: reloadOpen}
+	}
+}
+
+// dispatchCapture decides what to do with the captured text based on
+// whether inbox.md is currently open in the editor and dirty.
+//
+// Branches:
+//   - inbox not open → disk write only
+//   - inbox open + clean → disk write + editor reload (next task)
+//   - inbox open + dirty → in-memory editor append (next task)
 func (m model) dispatchCapture(text string) (tea.Model, tea.Cmd) {
-	return m, nil
+	line := formatCaptureLine(time.Now(), text)
+	inboxPath := resolveInboxPath(m.vault, m.inboxPath)
+
+	if m.currentFile != inboxPath {
+		// Inbox is not the currently open file — just disk write.
+		return m, captureAppendCmd(inboxPath, line, false)
+	}
+	// Other branches added in the next task.
+	return m, captureAppendCmd(inboxPath, line, true)
 }

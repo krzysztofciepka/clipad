@@ -328,6 +328,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
+	case captureAppendedMsg:
+		if msg.err != nil {
+			m.errMsg = "capture failed: " + msg.err.Error()
+			return m, nil
+		}
+		if msg.reloadOpen && m.currentFile == msg.inboxPath {
+			if data, err := os.ReadFile(msg.inboxPath); err == nil {
+				line, col := editorCursorPos(m.editor)
+				m.editor.SetValue(string(data))
+				m.cleanContent = string(data)
+				m.editor.MoveTo(line, col)
+			}
+		}
+		return m, nil
+
 	case indexProgressMsg:
 		if msg.embedded > 0 {
 			m.indexerStatus = fmt.Sprintf("[idx %d/%d +%d]", msg.done, msg.total, msg.embedded)
