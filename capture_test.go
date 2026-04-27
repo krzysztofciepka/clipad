@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -92,5 +93,113 @@ func TestFormatCaptureLine_EmptyTextSafe(t *testing.T) {
 	want := "- 2026-04-27 14:22 — "
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestAppendToInboxFile_CreatesMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inbox.md")
+
+	if err := appendToInboxFile(path, "- 2026-04-27 14:22 — hi"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := "- 2026-04-27 14:22 — hi\n"
+	if string(data) != want {
+		t.Errorf("got %q, want %q", string(data), want)
+	}
+}
+
+func TestAppendToInboxFile_CreatesMissingParentDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "journals", "inbox.md")
+
+	if err := appendToInboxFile(path, "- t — x"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("file not created: %v", err)
+	}
+}
+
+func TestAppendToInboxFile_PreservesTrailingNewline(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inbox.md")
+	os.WriteFile(path, []byte("existing line\n"), 0o644)
+
+	if err := appendToInboxFile(path, "- t — new"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	want := "existing line\n- t — new\n"
+	if string(data) != want {
+		t.Errorf("got %q, want %q", string(data), want)
+	}
+}
+
+func TestAppendToInboxFile_AddsNewlineWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inbox.md")
+	os.WriteFile(path, []byte("existing line"), 0o644)
+
+	if err := appendToInboxFile(path, "- t — new"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	want := "existing line\n- t — new\n"
+	if string(data) != want {
+		t.Errorf("got %q, want %q", string(data), want)
+	}
+}
+
+func TestAppendToInboxFile_PreservesBlankLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inbox.md")
+	os.WriteFile(path, []byte("a\n\n"), 0o644)
+
+	if err := appendToInboxFile(path, "- t — new"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	want := "a\n\n- t — new\n"
+	if string(data) != want {
+		t.Errorf("got %q, want %q", string(data), want)
+	}
+}
+
+func TestAppendToInboxFile_TwoCapturesInSequence(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inbox.md")
+
+	if err := appendToInboxFile(path, "- t — one"); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if err := appendToInboxFile(path, "- t — two"); err != nil {
+		t.Fatalf("second: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	want := "- t — one\n- t — two\n"
+	if string(data) != want {
+		t.Errorf("got %q, want %q", string(data), want)
+	}
+}
+
+func TestAppendToInboxFile_FileMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inbox.md")
+
+	if err := appendToInboxFile(path, "- t — x"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %v, want 0644", info.Mode().Perm())
 	}
 }

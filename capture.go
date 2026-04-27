@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -37,4 +38,30 @@ func formatCaptureLine(now time.Time, text string) string {
 	return fmt.Sprintf("- %s — %s",
 		now.Format("2006-01-02 15:04"),
 		text)
+}
+
+// appendToInboxFile appends one bullet line to the given path, creating
+// the file (and any missing parent dirs) if needed. Trailing-newline
+// rules:
+//   - the result always ends in exactly one "\n"
+//   - if the existing file lacks a trailing "\n", one is inserted
+//     before the new bullet (so we never produce "…texthello- ...")
+//   - existing trailing blank lines (e.g. "\n\n") are preserved as-is
+//     and the bullet is appended after them
+func appendToInboxFile(path, line string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var b strings.Builder
+	b.Write(existing)
+	if len(existing) > 0 && !bytes.HasSuffix(existing, []byte("\n")) {
+		b.WriteByte('\n')
+	}
+	b.WriteString(line)
+	b.WriteByte('\n')
+	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
