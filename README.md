@@ -72,6 +72,8 @@ On first run, you'll be prompted to set your vault path (the directory where you
 |-----|--------|
 | `Ctrl+S` | Save |
 | `Ctrl+N` | New note (filename derived from first line) |
+| `Ctrl+J` | Quick capture — append timestamped bullet to `<vault>/inbox.md` |
+| `Ctrl+O` | Move selected text to a new note in the same directory |
 | `Ctrl+R` | Find & replace |
 | `Ctrl+P` | Toggle markdown preview |
 | `Ctrl+B` | Toggle file tree visibility |
@@ -164,7 +166,7 @@ The default library covers:
 
 | File | Purpose |
 |------|---------|
-| `~/.config/clipad/config.toml` | Vault path |
+| `~/.config/clipad/config.toml` | Vault path; optional `inbox_path` override (defaults to `inbox.md` relative to the vault — accepts vault-relative subpaths, absolute paths, and `~`-prefixed paths) |
 | `~/.config/clipad/plugins/*.toml` | Plugin settings |
 
 Respects `$XDG_CONFIG_HOME` if set.
