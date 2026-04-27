@@ -219,7 +219,39 @@ func (m model) handleDelegate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.errMsg = "filename only — no slashes"
 			return m, nil
 		}
-		// Happy path implemented in the next task.
+		srcDir := filepath.Dir(m.currentFile)
+		dstPath := filepath.Join(srcDir, name)
+
+		// Collision check (best-effort; writeNewFile re-checks atomically
+		// via O_EXCL in case the file appears between here and the write).
+		if _, err := os.Stat(dstPath); err == nil {
+			m.errMsg = "file exists: " + name
+			return m, nil
+		}
+
+		// Snapshot the selection text — DeleteSelection wipes it.
+		selText := m.editor.SelectedText()
+
+		// Step 1: write the new file.
+		if err := writeNewFile(dstPath, ensureTrailingNewline(selText)); err != nil {
+			m.errMsg = "delegate failed: " + err.Error()
+			return m, nil
+		}
+
+		// Step 2: cut the selection from the editor (mutates in-place,
+		// integrates with undo, moves cursor to the start of where the
+		// selection used to be).
+		m.editor.DeleteSelection()
+
+		// Step 3: persist the source. saveCurrentFile is a *model method
+		// that signals failure by setting m.errMsg (no return value);
+		// after success isDirty() returns false. We clear errMsg first
+		// to detect a fresh failure cleanly.
+		m.errMsg = ""
+		m.saveCurrentFile()
+
+		m.inputMode = inputNone
+		m.delegateInput.Blur()
 		return m, nil
 	}
 

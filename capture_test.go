@@ -453,6 +453,161 @@ func TestHandleDelegate_EmptyEnterIgnored(t *testing.T) {
 	}
 }
 
+// delegateSetup creates a temp vault, writes a source file, opens it
+// in the model with a selection covering cols [selectFromCol, selectToCol)
+// on row 0. Returns the configured model and the source path.
+func delegateSetup(t *testing.T, srcContent string, selectFromCol, selectToCol int) (model, string) {
+	t.Helper()
+	m := newTestModel(t)
+	srcPath := filepath.Join(m.vault, "src.md")
+	if err := os.WriteFile(srcPath, []byte(srcContent), 0o644); err != nil {
+		t.Fatalf("seed src: %v", err)
+	}
+	m.currentFile = srcPath
+	m.editor.SetValue(srcContent)
+	m.cleanContent = srcContent
+	m.editor.selActive = true
+	m.editor.selAnchorLine = 0
+	m.editor.selAnchorCol = selectFromCol
+	m.editor.MoveTo(0, selectToCol)
+	m.activePanel = editorPanel
+	return m, srcPath
+}
+
+func TestDelegate_HappyPath(t *testing.T) {
+	m, srcPath := delegateSetup(t, "foo bar baz", 4, 7)
+	srcDir := filepath.Dir(srcPath)
+
+	m.inputMode = inputDelegateName
+	m.delegateInput.SetValue("notes")
+
+	next, _ := m.handleDelegate(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+
+	dstPath := filepath.Join(srcDir, "notes.md")
+	dst, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatalf("destination missing: %v", err)
+	}
+	if string(dst) != "bar\n" {
+		t.Errorf("destination = %q, want %q", string(dst), "bar\n")
+	}
+
+	src, err := os.ReadFile(srcPath)
+	if err != nil {
+		t.Fatalf("source missing: %v", err)
+	}
+	if string(src) != "foo  baz" {
+		t.Errorf("source on disk = %q, want %q", string(src), "foo  baz")
+	}
+
+	if !strings.HasPrefix(nm.editor.Value(), "foo  baz") {
+		t.Errorf("editor = %q, want post-cut content", nm.editor.Value())
+	}
+	if nm.isDirty() {
+		t.Error("editor should be clean after delegate save")
+	}
+}
+
+func TestDelegate_AutoAppendsMd(t *testing.T) {
+	m, srcPath := delegateSetup(t, "abcdef", 0, 3)
+	m.inputMode = inputDelegateName
+	m.delegateInput.SetValue("typed")
+
+	next, _ := m.handleDelegate(tea.KeyMsg{Type: tea.KeyEnter})
+	_ = next
+
+	dstPath := filepath.Join(filepath.Dir(srcPath), "typed.md")
+	if _, err := os.Stat(dstPath); err != nil {
+		t.Errorf(".md not auto-appended; expected %s", dstPath)
+	}
+}
+
+func TestDelegate_DirtySource_SinglePersistedSave(t *testing.T) {
+	m := newTestModel(t)
+	srcPath := filepath.Join(m.vault, "src.md")
+	onDisk := "foo bar baz\n"
+	if err := os.WriteFile(srcPath, []byte(onDisk), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	m.currentFile = srcPath
+	m.editor.SetValue("foo bar baz\nDIRTY\n")
+	m.cleanContent = onDisk
+	if !m.isDirty() {
+		t.Fatal("editor must be dirty for this scenario")
+	}
+	m.editor.selActive = true
+	m.editor.selAnchorLine = 0
+	m.editor.selAnchorCol = 4
+	m.editor.MoveTo(0, 7)
+	m.activePanel = editorPanel
+
+	m.inputMode = inputDelegateName
+	m.delegateInput.SetValue("notes")
+
+	next, _ := m.handleDelegate(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.isDirty() {
+		t.Error("editor should be clean after delegate save")
+	}
+
+	src, _ := os.ReadFile(srcPath)
+	if !strings.Contains(string(src), "foo  baz") {
+		t.Errorf("on-disk source missing cut: %q", string(src))
+	}
+	if !strings.Contains(string(src), "DIRTY") {
+		t.Errorf("on-disk source missing dirty edit: %q", string(src))
+	}
+
+	dst, err := os.ReadFile(filepath.Join(m.vault, "notes.md"))
+	if err != nil {
+		t.Fatalf("destination missing: %v", err)
+	}
+	if string(dst) != "bar\n" {
+		t.Errorf("destination = %q, want %q", string(dst), "bar\n")
+	}
+}
+
+func TestDelegate_CollisionRefused(t *testing.T) {
+	m, srcPath := delegateSetup(t, "abcdef", 0, 3)
+	srcDir := filepath.Dir(srcPath)
+	collidePath := filepath.Join(srcDir, "taken.md")
+	if err := os.WriteFile(collidePath, []byte("preexisting"), 0o644); err != nil {
+		t.Fatalf("pre-seed: %v", err)
+	}
+
+	m.inputMode = inputDelegateName
+	m.delegateInput.SetValue("taken")
+
+	next, _ := m.handleDelegate(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.inputMode != inputDelegateName {
+		t.Errorf("inputMode = %v, want stays inputDelegateName", nm.inputMode)
+	}
+	if nm.errMsg == "" {
+		t.Error("errMsg should be set on collision")
+	}
+
+	data, _ := os.ReadFile(collidePath)
+	if string(data) != "preexisting" {
+		t.Errorf("collision file overwritten: %q", string(data))
+	}
+	src, _ := os.ReadFile(srcPath)
+	if string(src) != "abcdef" {
+		t.Errorf("source modified despite collision refusal: %q", string(src))
+	}
+	if nm.editor.Value() != "abcdef" {
+		t.Errorf("editor modified despite collision refusal: %q", nm.editor.Value())
+	}
+}
+
 func TestHandleDelegate_SlashRejected(t *testing.T) {
 	m := newTestModel(t)
 	srcDir := m.vault
