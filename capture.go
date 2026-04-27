@@ -65,3 +65,12 @@ func appendToInboxFile(path, line string) error {
 	b.WriteByte('\n')
 	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
+
+// ensureTrailingNewline returns s with a single "\n" at the end.
+// Empty strings are returned unchanged (no spurious "\n").
+func ensureTrailingNewline(s string) string {
+	if s == "" || strings.HasSuffix(s, "\n") {
+		return s
+	}
+	return s + "\n"
+}

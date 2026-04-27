@@ -203,3 +203,27 @@ func TestAppendToInboxFile_FileMode(t *testing.T) {
 		t.Errorf("mode = %v, want 0644", info.Mode().Perm())
 	}
 }
+
+func TestEnsureTrailingNewline_Empty(t *testing.T) {
+	if got := ensureTrailingNewline(""); got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+}
+
+func TestEnsureTrailingNewline_AlreadyHasOne(t *testing.T) {
+	if got := ensureTrailingNewline("foo\n"); got != "foo\n" {
+		t.Errorf("got %q, want %q", got, "foo\n")
+	}
+}
+
+func TestEnsureTrailingNewline_AddsOne(t *testing.T) {
+	if got := ensureTrailingNewline("foo"); got != "foo\n" {
+		t.Errorf("got %q, want %q", got, "foo\n")
+	}
+}
+
+func TestEnsureTrailingNewline_OnlyNewline(t *testing.T) {
+	if got := ensureTrailingNewline("\n"); got != "\n" {
+		t.Errorf("got %q, want %q", got, "\n")
+	}
+}
