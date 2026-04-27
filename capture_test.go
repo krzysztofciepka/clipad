@@ -608,6 +608,37 @@ func TestDelegate_CollisionRefused(t *testing.T) {
 	}
 }
 
+func TestCtrlO_NoSelection_RefusedWithFlash(t *testing.T) {
+	m := newTestModel(t)
+	srcPath := filepath.Join(m.vault, "src.md")
+	os.WriteFile(srcPath, []byte("content"), 0o644)
+	m.currentFile = srcPath
+	m.editor.SetValue("content")
+	m.cleanContent = "content"
+	m.activePanel = editorPanel
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone (modal must NOT open)", nm.inputMode)
+	}
+	if nm.errMsg == "" {
+		t.Error("errMsg should be set when no selection")
+	}
+}
+
+func TestCtrlO_WithSelection_OpensModal(t *testing.T) {
+	m, _ := delegateSetup(t, "hello", 0, 3)
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	nm := next.(model)
+
+	if nm.inputMode != inputDelegateName {
+		t.Errorf("inputMode = %v, want inputDelegateName", nm.inputMode)
+	}
+}
+
 func TestHandleDelegate_SlashRejected(t *testing.T) {
 	m := newTestModel(t)
 	srcDir := m.vault

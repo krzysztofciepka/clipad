@@ -788,6 +788,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.captureInput.Focus()
 			return m, cmd
 
+		case "ctrl+o":
+			if m.activePanel != editorPanel || m.currentFile == "" {
+				m.errMsg = "open a file in the editor first"
+				return m, nil
+			}
+			if !m.editor.selActive || m.editor.SelectedText() == "" {
+				m.errMsg = "select text first"
+				return m, nil
+			}
+			m.inputMode = inputDelegateName
+			m.delegateInput.Reset()
+			cmd := m.delegateInput.Focus()
+			return m, cmd
+
 		case "tab":
 			if m.activePanel == treePanel {
 				m.activePanel = editorPanel
@@ -1001,6 +1015,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleVaultSearch(msg)
 	case inputCapture:
 		return m.handleCapture(msg)
+	case inputDelegateName:
+		return m.handleDelegate(msg)
 	}
 	return m, nil
 }
@@ -1935,6 +1951,10 @@ func (m model) View() string {
 	} else if m.inputMode == inputRename {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Rename: " + m.renameInput.View())
+	} else if m.inputMode == inputDelegateName {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Move to " + filepath.Dir(m.currentFile) + string(filepath.Separator) +
+				m.delegateInput.View())
 	} else if m.inputMode == inputReplaceSearch {
 		term := m.replaceSearchInput.Value()
 		countInfo := ""
