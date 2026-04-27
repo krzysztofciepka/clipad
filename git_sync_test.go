@@ -228,6 +228,47 @@ func TestRunGitSync_RemoteEditUnrelated_NoConflict(t *testing.T) {
 	}
 }
 
+func TestRunGitSync_ModifyDelete_KeepLocal(t *testing.T) {
+	remote := initBareRemote(t)
+	local := initLocalWithRemote(t, remote)
+	other := initLocalWithRemote(t, remote)
+
+	// Seed a file via "other".
+	os.WriteFile(filepath.Join(other, "shared.md"), []byte("seed"), 0o644)
+	exec.Command("git", "-C", other, "add", "-A").Run()
+	exec.Command("git", "-C", other, "commit", "-m", "seed shared").Run()
+	exec.Command("git", "-C", other, "push").Run()
+
+	// Local pulls the seed.
+	exec.Command("git", "-C", local, "pull", "--rebase", "origin", "HEAD").Run()
+
+	// Local modifies shared.md; "other" deletes it and pushes.
+	os.WriteFile(filepath.Join(local, "shared.md"), []byte("local edit"), 0o644)
+	os.Remove(filepath.Join(other, "shared.md"))
+	exec.Command("git", "-C", other, "add", "-A").Run()
+	exec.Command("git", "-C", other, "commit", "-m", "delete shared").Run()
+	exec.Command("git", "-C", other, "push").Run()
+
+	cmd := runGitSync(local, remote)
+	msg := cmd().(gitSyncResultMsg)
+	if msg.err != nil {
+		t.Fatalf("unexpected error: %v", msg.err)
+	}
+	// Local content kept.
+	data, err := os.ReadFile(filepath.Join(local, "shared.md"))
+	if err != nil {
+		t.Fatalf("shared.md missing locally: %v", err)
+	}
+	if string(data) != "local edit" {
+		t.Errorf("shared.md = %q, want %q", string(data), "local edit")
+	}
+	// No sync-conflict file.
+	matches, _ := filepath.Glob(filepath.Join(local, "*sync-conflict*"))
+	if len(matches) != 0 {
+		t.Errorf("unexpected sync-conflict files: %v", matches)
+	}
+}
+
 func TestRunGitSync_Conflict(t *testing.T) {
 	remote := initBareRemote(t)
 	local := initLocalWithRemote(t, remote)
