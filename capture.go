@@ -183,6 +183,51 @@ func (m *model) appendLineToEditor(line string) {
 	m.editor.MoveTo(row, col)
 }
 
+// handleDelegate handles key events while inputMode == inputDelegateName.
+//
+// Esc cancels (modal closes; selection on editor untouched).
+// Empty Enter is ignored (user keeps typing).
+// Filenames containing "/" or "\" are rejected — names only, target
+// dir is fixed at the source file's parent directory.
+// Filenames without an extension get ".md" auto-appended.
+//
+// On a valid name, the handler:
+//  1. checks for collision against the target path
+//  2. reads the editor's currently selected text
+//  3. atomically writes the new file (writeNewFile / O_EXCL)
+//  4. removes the selection from the editor (DeleteSelection)
+//  5. saves the source via saveCurrentFile
+//
+// All other keys fall through to textinput.Update.
+func (m model) handleDelegate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.inputMode = inputNone
+		m.delegateInput.Blur()
+		return m, nil
+
+	case "enter":
+		raw := strings.TrimSpace(m.delegateInput.Value())
+		if raw == "" {
+			return m, nil // ignore; user keeps typing
+		}
+		name := raw
+		if filepath.Ext(name) == "" {
+			name += ".md"
+		}
+		if strings.ContainsAny(name, "/\\") {
+			m.errMsg = "filename only — no slashes"
+			return m, nil
+		}
+		// Happy path implemented in the next task.
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.delegateInput, cmd = m.delegateInput.Update(msg)
+	return m, cmd
+}
+
 // dispatchCapture decides what to do with the captured text based on
 // whether inbox.md is currently open in the editor and dirty.
 //

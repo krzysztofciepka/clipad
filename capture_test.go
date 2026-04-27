@@ -425,6 +425,64 @@ func TestCapture_OpenDirtyInbox_AppendsInMemory(t *testing.T) {
 	}
 }
 
+func TestHandleDelegate_EscClosesModal(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputDelegateName
+	m.delegateInput.SetValue("foo")
+
+	next, cmd := m.handleDelegate(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if cmd != nil {
+		t.Errorf("expected nil cmd, got %v", cmd)
+	}
+}
+
+func TestHandleDelegate_EmptyEnterIgnored(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputDelegateName
+
+	next, _ := m.handleDelegate(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.inputMode != inputDelegateName {
+		t.Errorf("inputMode = %v, want inputDelegateName (modal stays open)", nm.inputMode)
+	}
+}
+
+func TestHandleDelegate_SlashRejected(t *testing.T) {
+	m := newTestModel(t)
+	srcDir := m.vault
+	srcPath := filepath.Join(srcDir, "src.md")
+	os.WriteFile(srcPath, []byte("hello world"), 0o644)
+	m.currentFile = srcPath
+	m.editor.SetValue("hello world")
+	m.cleanContent = "hello world"
+	m.editor.selActive = true
+	m.editor.selAnchorLine = 0
+	m.editor.selAnchorCol = 0
+	m.editor.MoveTo(0, 5)
+
+	m.inputMode = inputDelegateName
+	m.delegateInput.SetValue("subdir/foo")
+
+	next, _ := m.handleDelegate(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.inputMode != inputDelegateName {
+		t.Errorf("inputMode = %v, want stays inputDelegateName", nm.inputMode)
+	}
+	if nm.errMsg == "" {
+		t.Error("errMsg should be set on slash rejection")
+	}
+	if _, err := os.Stat(filepath.Join(srcDir, "subdir")); err == nil {
+		t.Error("subdir was created — handler should have rejected before any IO")
+	}
+}
+
 func TestCapture_OpenCleanInbox_PreservesCursor(t *testing.T) {
 	m := newTestModel(t)
 	inboxPath := filepath.Join(m.vault, "inbox.md")
