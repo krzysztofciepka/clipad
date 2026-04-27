@@ -69,65 +69,67 @@ func runGitSync(vault, remote string) tea.Cmd {
 			}
 		}
 
-		// Fetch
+		// Fetch remote
 		gitCmd(vault, "fetch", "origin")
 
-		// If no local commits yet, make an initial commit and push
-		localHead, localErr := gitCmd(vault, "rev-parse", "HEAD")
-		if localErr != nil {
-			if _, err := gitCmd(vault, "add", "-A"); err != nil {
-				return gitSyncResultMsg{err: fmt.Errorf("git add: %w", err)}
-			}
-			if _, err := gitCmd(vault, "commit", "-m", "clipad: initial backup"); err != nil {
-				return gitSyncResultMsg{err: fmt.Errorf("git commit: %w", err)}
-			}
-			_, pushErr := gitCmd(vault, "push", "-u", "origin", "HEAD")
-			return gitSyncResultMsg{pushed: true, pushErr: pushErr}
-		}
-
-		// Check if remote has commits we don't have
-		remoteHead, _ := gitCmd(vault, "rev-parse", "origin/HEAD")
-
-		// Pull (rebase) if remote has changes
-		if remoteHead != "" && localHead != remoteHead {
-			out, err := gitCmd(vault, "pull", "--rebase", "origin", "HEAD")
-			if err != nil {
-				// Try with --allow-unrelated-histories
-				if strings.Contains(out, "unrelated histories") {
-					_, err = gitCmd(vault, "pull", "--rebase", "--allow-unrelated-histories", "origin", "HEAD")
-				}
-				if err != nil {
-					// Conflict: abort rebase, save remote versions as .sync-conflict files
-					return handleSyncConflict(vault)
-				}
-			}
-			afterPull, _ := gitCmd(vault, "rev-parse", "HEAD")
-			if afterPull != localHead {
-				pulled = true
-			}
-		}
-
-		// Stage all changes
+		// 1. Stage and commit local changes BEFORE merging, so the working
+		//    tree is clean and merge can compute a real three-way result.
 		if _, err := gitCmd(vault, "add", "-A"); err != nil {
 			return gitSyncResultMsg{err: fmt.Errorf("git add: %w", err)}
 		}
-
-		// Check if there are staged changes
-		_, err := gitCmd(vault, "diff", "--cached", "--quiet")
-		if err != nil {
-			// There are changes to commit
+		if _, err := gitCmd(vault, "diff", "--cached", "--quiet"); err != nil {
 			timestamp := time.Now().Format("2006-01-02 15:04")
 			msg := fmt.Sprintf("clipad backup: %s", timestamp)
 			if _, err := gitCmd(vault, "commit", "-m", msg); err != nil {
 				return gitSyncResultMsg{err: fmt.Errorf("git commit: %w", err)}
 			}
+		}
 
-			// Push
+		// 2. If there's no local HEAD yet (brand new repo with no commits),
+		//    push directly. This handles the very-first-sync case.
+		localHead, localErr := gitCmd(vault, "rev-parse", "HEAD")
+		if localErr != nil {
+			_, pushErr := gitCmd(vault, "push", "-u", "origin", "HEAD")
+			return gitSyncResultMsg{pushed: true, pushErr: pushErr}
+		}
+
+		// 3. If remote has commits we don't have, merge them in.
+		remoteHead, _ := gitCmd(vault, "rev-parse", "origin/HEAD")
+		if remoteHead != "" && localHead != remoteHead {
+			out, err := gitCmd(vault, "merge", "--no-edit", "--no-ff", "origin/HEAD")
+			if err != nil {
+				if strings.Contains(out, "unrelated histories") {
+					_, err = gitCmd(vault, "merge", "--no-edit", "--no-ff",
+						"--allow-unrelated-histories", "origin/HEAD")
+				}
+			}
+			if err != nil {
+				if resErr := resolveMergeConflicts(vault); resErr != nil {
+					return gitSyncResultMsg{err: resErr}
+				}
+			}
+			afterMerge, _ := gitCmd(vault, "rev-parse", "HEAD")
+			if afterMerge != localHead {
+				pulled = true
+			}
+		}
+
+		// 4. Push if remote has no HEAD yet (first sync into an empty
+		//    remote) or local is ahead.
+		needPush := false
+		if remoteHead == "" {
+			needPush = true
+		} else {
+			ahead, _ := gitCmd(vault, "rev-list", "--count", "origin/HEAD..HEAD")
+			if ahead != "" && ahead != "0" {
+				needPush = true
+			}
+		}
+		if needPush {
 			_, pushErr := gitCmd(vault, "push", "-u", "origin", "HEAD")
 			pushed = true
 			return gitSyncResultMsg{pulled: pulled, pushed: pushed, pushErr: pushErr}
 		}
-
 		return gitSyncResultMsg{pulled: pulled, pushed: false}
 	}
 }
@@ -143,47 +145,73 @@ func syncConflictName(name string) string {
 	return base + ".sync-conflict" + ext
 }
 
-func handleSyncConflict(vault string) gitSyncResultMsg {
-	// Abort the rebase to restore local state
-	gitCmd(vault, "rebase", "--abort")
-
-	// Find files that differ between local and remote
-	out, err := gitCmd(vault, "diff", "--name-only", "HEAD", "origin/HEAD")
-	if err != nil || out == "" {
-		return gitSyncResultMsg{err: fmt.Errorf("sync conflict: could not identify conflicting files")}
+// resolveMergeConflicts is called after `git merge` left the index in a
+// conflicted state. It enumerates conflicted paths via `git ls-files -u`
+// and resolves each one based on which stages are present:
+//   - stages 2 AND 3 -> both modified: write theirs as .sync-conflict
+//     sibling, keep ours (`checkout --ours`).
+//   - stage 2 only   -> modified by us, deleted by them: keep our edit.
+//   - stage 3 only   -> deleted by us, modified by them: keep deletion.
+//
+// It then commits the merge so the caller can push.
+func resolveMergeConflicts(vault string) error {
+	out, _ := gitCmd(vault, "ls-files", "-u", "--full-name")
+	if out == "" {
+		gitCmd(vault, "merge", "--abort")
+		return fmt.Errorf("sync conflict: merge failed with no unmerged paths")
 	}
 
-	// Merge remote into local, preferring local version on conflicts.
-	// This properly integrates remote history so we can push without --force.
-	if _, err := gitCmd(vault, "merge", "origin/HEAD", "-X", "ours", "--no-edit"); err != nil {
-		return gitSyncResultMsg{err: fmt.Errorf("sync conflict: merge failed")}
-	}
-
-	// Write remote versions of conflicting files as .sync-conflict copies
-	files := strings.Split(out, "\n")
-	for _, f := range files {
-		f = strings.TrimSpace(f)
-		if f == "" {
+	// Each line: "<mode> <sha> <stage>\t<path>"
+	stages := map[string]map[int]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		// Get the remote version of the file
-		remoteContent, err := gitCmd(vault, "show", "origin/HEAD:"+f)
-		if err != nil {
-			continue // file may have been deleted on remote
+		tab := strings.IndexByte(line, '\t')
+		if tab < 0 {
+			continue
 		}
-		// Write as sync-conflict file
-		conflictName := syncConflictName(filepath.Base(f))
-		conflictPath := filepath.Join(vault, filepath.Dir(f), conflictName)
-		os.WriteFile(conflictPath, []byte(remoteContent), 0o644)
+		head := line[:tab]
+		path := line[tab+1:]
+		fields := strings.Fields(head)
+		if len(fields) < 3 {
+			continue
+		}
+		stage := 0
+		fmt.Sscanf(fields[2], "%d", &stage)
+		if _, ok := stages[path]; !ok {
+			stages[path] = map[int]bool{}
+		}
+		stages[path][stage] = true
 	}
 
-	// Commit conflict files and push
-	gitCmd(vault, "add", "-A")
-	timestamp := time.Now().Format("2006-01-02 15:04")
-	gitCmd(vault, "commit", "-m", fmt.Sprintf("clipad sync: resolved conflicts %s", timestamp))
-	_, pushErr := gitCmd(vault, "push", "-u", "origin", "HEAD")
+	for path, st := range stages {
+		switch {
+		case st[2] && st[3]:
+			theirs, err := gitCmd(vault, "show", ":3:"+path)
+			if err == nil {
+				conflictName := syncConflictName(filepath.Base(path))
+				conflictRel := filepath.Join(filepath.Dir(path), conflictName)
+				conflictPath := filepath.Join(vault, conflictRel)
+				os.WriteFile(conflictPath, []byte(theirs), 0o644)
+				gitCmd(vault, "add", conflictRel)
+			}
+			gitCmd(vault, "checkout", "--ours", "--", path)
+			gitCmd(vault, "add", path)
+		case st[2] && !st[3]:
+			gitCmd(vault, "add", path)
+		case !st[2] && st[3]:
+			gitCmd(vault, "rm", "-f", path)
+		}
+	}
 
-	return gitSyncResultMsg{pulled: true, pushed: true, pushErr: pushErr}
+	timestamp := time.Now().Format("2006-01-02 15:04")
+	if _, err := gitCmd(vault, "commit", "-m",
+		fmt.Sprintf("clipad sync: resolved conflicts %s", timestamp)); err != nil {
+		return fmt.Errorf("sync conflict: commit failed: %w", err)
+	}
+	return nil
 }
 
 func (m model) triggerManualGitSync() (tea.Model, tea.Cmd) {
