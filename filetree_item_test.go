@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func setupTestVault(t *testing.T) string {
@@ -160,6 +162,40 @@ func TestBuildTree_HiddenDirStillExcluded_EmptyOrNot(t *testing.T) {
 		if child.Name == ".hidden" {
 			t.Error(".hidden directory should be excluded even when empty")
 		}
+	}
+}
+
+func TestHandleNewFolder_DoesNotSeedUntitledMd(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	m := newModel(vault, nil, "", "")
+	m.inputMode = inputNewFolder
+	m.newFolderInput.SetValue("research")
+
+	next, _ := m.handleNewFolder(tea.KeyMsg{Type: tea.KeyEnter})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+
+	folder := filepath.Join(vault, "research")
+	st, err := os.Stat(folder)
+	if err != nil || !st.IsDir() {
+		t.Fatalf("folder not created: %v", err)
+	}
+
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Errorf("new folder is not empty: %v", names)
 	}
 }
 

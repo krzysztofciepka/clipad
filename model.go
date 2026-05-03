@@ -1313,8 +1313,6 @@ func (m model) handleNewFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inputMode = inputNone
 			return m, nil
 		}
-		// Create a placeholder note so the folder shows in the tree
-		os.WriteFile(filepath.Join(folderPath, "untitled.md"), []byte(""), 0o644)
 		m.refreshTree()
 		m.inputMode = inputNone
 		m.errMsg = ""
