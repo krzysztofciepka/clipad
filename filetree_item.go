@@ -58,9 +58,7 @@ func populateChildren(node *TreeNode) error {
 			if err := populateChildren(child); err != nil {
 				continue
 			}
-			if hasMarkdownFiles(child) {
-				dirs = append(dirs, child)
-			}
+			dirs = append(dirs, child)
 		} else if strings.HasSuffix(strings.ToLower(name), ".md") {
 			files = append(files, &TreeNode{
 				Name: name,
@@ -78,18 +76,6 @@ func populateChildren(node *TreeNode) error {
 
 	node.Children = append(dirs, files...)
 	return nil
-}
-
-func hasMarkdownFiles(node *TreeNode) bool {
-	for _, child := range node.Children {
-		if !child.IsDir {
-			return true
-		}
-		if hasMarkdownFiles(child) {
-			return true
-		}
-	}
-	return false
 }
 
 func flattenTree(node *TreeNode, depth int) []FlatItem {

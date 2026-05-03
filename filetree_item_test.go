@@ -91,6 +91,78 @@ func TestCollectFiles(t *testing.T) {
 	}
 }
 
+func TestBuildTree_EmptyFolderRenders(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "readme.md"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root, err := buildTree(dir)
+	if err != nil {
+		t.Fatalf("buildTree() error: %v", err)
+	}
+
+	var found bool
+	for _, child := range root.Children {
+		if child.Name == "empty" {
+			found = true
+			if !child.IsDir {
+				t.Errorf("empty entry IsDir = false, want true")
+			}
+			if len(child.Children) != 0 {
+				t.Errorf("empty.Children len = %d, want 0", len(child.Children))
+			}
+		}
+	}
+	if !found {
+		names := make([]string, len(root.Children))
+		for i, c := range root.Children {
+			names[i] = c.Name
+		}
+		t.Errorf("empty folder not in tree; got %v", names)
+	}
+}
+
+func TestBuildTree_AllEmptyFoldersStillRender(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a", "b", "c"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	root, err := buildTree(dir)
+	if err != nil {
+		t.Fatalf("buildTree() error: %v", err)
+	}
+	if len(root.Children) != 3 {
+		names := make([]string, len(root.Children))
+		for i, c := range root.Children {
+			names[i] = c.Name
+		}
+		t.Errorf("got %d children %v, want 3", len(root.Children), names)
+	}
+}
+
+func TestBuildTree_HiddenDirStillExcluded_EmptyOrNot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := buildTree(dir)
+	if err != nil {
+		t.Fatalf("buildTree() error: %v", err)
+	}
+	for _, child := range root.Children {
+		if child.Name == ".hidden" {
+			t.Error(".hidden directory should be excluded even when empty")
+		}
+	}
+}
+
 func expandAll(node *TreeNode) {
 	if node.IsDir {
 		node.Expanded = true
