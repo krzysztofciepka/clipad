@@ -194,6 +194,36 @@ func (tp *TreePanel) selectedNode() *TreeNode {
 	return nil
 }
 
+// indexOfPath returns the position of the flat item whose Node.Path matches
+// path, or -1 if no such item is currently visible.
+func (tp *TreePanel) indexOfPath(path string) int {
+	for i, item := range tp.items {
+		if item.Node.Path == path {
+			return i
+		}
+	}
+	return -1
+}
+
+// hasFollowingSiblingAtSameDepth reports whether any item after idx has the
+// same Depth as items[idx] before encountering an item at a lower depth (which
+// would mean the parent's subtree ended). False for out-of-range idx.
+func (tp *TreePanel) hasFollowingSiblingAtSameDepth(idx int) bool {
+	if idx < 0 || idx >= len(tp.items) {
+		return false
+	}
+	depth := tp.items[idx].Depth
+	for j := idx + 1; j < len(tp.items); j++ {
+		if tp.items[j].Depth < depth {
+			return false
+		}
+		if tp.items[j].Depth == depth {
+			return true
+		}
+	}
+	return false
+}
+
 func (tp TreePanel) View(focused bool) string {
 	if tp.width <= 0 || tp.height <= 0 {
 		return ""

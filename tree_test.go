@@ -226,3 +226,75 @@ func TestView_PinnedRow_VisibleEvenWhenScrolled(t *testing.T) {
 		t.Errorf("Add note not rendered after scrolling:\n%s", out)
 	}
 }
+
+// buildPanel constructs a TreePanel directly from a list of (path, depth, isDir)
+// triples so tests can exercise the cursor helpers without spinning up a real
+// vault.
+func buildPanel(items []struct {
+	Path  string
+	Depth int
+	IsDir bool
+}) TreePanel {
+	tp := TreePanel{height: 100, width: 40}
+	tp.items = make([]FlatItem, len(items))
+	for i, it := range items {
+		tp.items[i] = FlatItem{
+			Node:  &TreeNode{Path: it.Path, Name: it.Path, IsDir: it.IsDir},
+			Depth: it.Depth,
+		}
+	}
+	return tp
+}
+
+func TestTreePanel_IndexOfPath(t *testing.T) {
+	tp := buildPanel([]struct {
+		Path  string
+		Depth int
+		IsDir bool
+	}{
+		{"/v/a", 0, true},
+		{"/v/a/x.md", 1, false},
+		{"/v/b.md", 0, false},
+	})
+
+	if got := tp.indexOfPath("/v/a/x.md"); got != 1 {
+		t.Errorf("indexOfPath = %d, want 1", got)
+	}
+	if got := tp.indexOfPath("/v/missing"); got != -1 {
+		t.Errorf("indexOfPath missing = %d, want -1", got)
+	}
+}
+
+func TestTreePanel_HasFollowingSiblingAtSameDepth(t *testing.T) {
+	tp := buildPanel([]struct {
+		Path  string
+		Depth int
+		IsDir bool
+	}{
+		{"/v/foo", 0, true},
+		{"/v/foo/a", 1, true},
+		{"/v/foo/a/n.md", 2, false},
+		{"/v/foo/b", 1, true},
+		{"/v/bar", 0, true},
+	})
+
+	if !tp.hasFollowingSiblingAtSameDepth(0) {
+		t.Error("foo/ should have a following sibling (bar/)")
+	}
+	if !tp.hasFollowingSiblingAtSameDepth(1) {
+		t.Error("a/ should have a following sibling (b/) at depth=1")
+	}
+	if tp.hasFollowingSiblingAtSameDepth(3) {
+		t.Error("b/ has no same-depth follower before depth drops below 1")
+	}
+	if tp.hasFollowingSiblingAtSameDepth(4) {
+		t.Error("bar/ is the last item; no follower")
+	}
+
+	if tp.hasFollowingSiblingAtSameDepth(-1) {
+		t.Error("negative idx must return false")
+	}
+	if tp.hasFollowingSiblingAtSameDepth(99) {
+		t.Error("oob idx must return false")
+	}
+}
