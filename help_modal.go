@@ -62,7 +62,7 @@ var helpSections = []helpSection{
 			{"Right", "Open file in editor"},
 			{"/", "Fuzzy filter"},
 			{"Ctrl+E", "Rename"},
-			{"Ctrl+D", "Delete"},
+			{"Ctrl+D", "Delete file or folder"},
 			{"Ctrl+F", "New folder"},
 		},
 	},

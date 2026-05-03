@@ -93,7 +93,7 @@ On first run, you'll be prompted to set your vault path (the directory where you
 | `Right` | Open file in editor |
 | `/` | Fuzzy filter |
 | `Ctrl+E` | Rename file or folder |
-| `Ctrl+D` | Delete file |
+| `Ctrl+D` | Delete file or folder |
 | `Ctrl+F` | Create folder |
 
 ### Editor
