@@ -1295,20 +1295,31 @@ func (m model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y":
 		node := m.tree.selectedNode()
 		if node != nil {
-			if err := os.Remove(node.Path); err != nil {
+			var err error
+			if node.IsDir {
+				err = os.RemoveAll(node.Path)
+			} else {
+				err = os.Remove(node.Path)
+			}
+			if err != nil {
 				m.errMsg = fmt.Sprintf("Delete failed: %v", err)
 			} else {
-				if m.currentFile == node.Path {
+				if m.currentFile != "" && pathIsInside(m.currentFile, node.Path) {
 					m.currentFile = ""
 					m.editor.SetValue("")
 					m.cleanContent = ""
+					m.tree.currentFile = ""
 				}
 				m.refreshTree()
 			}
 		}
 		m.inputMode = inputNone
+		m.deleteTarget = ""
+		m.deleteCount = deleteCounts{}
 	case "n", "esc", "ctrl+c":
 		m.inputMode = inputNone
+		m.deleteTarget = ""
+		m.deleteCount = deleteCounts{}
 	}
 	return m, nil
 }

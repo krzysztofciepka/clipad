@@ -219,3 +219,142 @@ func TestStatusBarPrompt_FileUnchanged(t *testing.T) {
 		t.Errorf("View() missing file prompt; got:\n%s", out)
 	}
 }
+
+func TestHandleDeleteConfirm_FolderRemovesRecursively(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	if err := os.MkdirAll(filepath.Join(target, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(target, "a.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(target, "sub", "b.md"), []byte("x"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.tree.cursor = m.tree.indexOfPath(target)
+	m.inputMode = inputConfirmDelete
+	m.deleteTarget = target
+
+	next, _ := m.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	nm := next.(model)
+
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("expected %s removed, stat err = %v", target, err)
+	}
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if nm.deleteTarget != "" {
+		t.Errorf("deleteTarget = %q, want empty", nm.deleteTarget)
+	}
+}
+
+func TestHandleDeleteConfirm_FolderClearsOpenFileInside(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	open := filepath.Join(target, "a.md")
+	os.MkdirAll(target, 0o755)
+	os.WriteFile(open, []byte("hello"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.openFile(open)
+	if m.currentFile != open {
+		t.Fatalf("openFile didn't take")
+	}
+	m.tree.cursor = m.tree.indexOfPath(target)
+	m.inputMode = inputConfirmDelete
+	m.deleteTarget = target
+
+	next, _ := m.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	nm := next.(model)
+
+	if nm.currentFile != "" {
+		t.Errorf("currentFile = %q, want empty", nm.currentFile)
+	}
+	if nm.editor.Value() != "" {
+		t.Errorf("editor value = %q, want empty", nm.editor.Value())
+	}
+	if nm.cleanContent != "" {
+		t.Errorf("cleanContent = %q, want empty", nm.cleanContent)
+	}
+	if nm.tree.currentFile != "" {
+		t.Errorf("tree.currentFile = %q, want empty", nm.tree.currentFile)
+	}
+}
+
+func TestHandleDeleteConfirm_FileStillWorks(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	file := filepath.Join(vault, "note.md")
+	os.WriteFile(file, []byte("hi"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.tree.cursor = m.tree.indexOfPath(file)
+	m.inputMode = inputConfirmDelete
+	m.deleteTarget = file
+
+	next, _ := m.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	nm := next.(model)
+
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Errorf("expected %s removed, stat err = %v", file, err)
+	}
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+}
+
+func TestHandleDeleteConfirm_NCancels(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	os.MkdirAll(target, 0o755)
+	os.WriteFile(filepath.Join(target, "a.md"), []byte("x"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.tree.cursor = m.tree.indexOfPath(target)
+	m.inputMode = inputConfirmDelete
+	m.deleteTarget = target
+
+	next, _ := m.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	nm := next.(model)
+
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("folder unexpectedly removed on 'n': %v", err)
+	}
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if nm.deleteTarget != "" {
+		t.Errorf("deleteTarget = %q, want empty", nm.deleteTarget)
+	}
+}
+
+func TestPathIsInside(t *testing.T) {
+	cases := []struct {
+		path string
+		root string
+		want bool
+	}{
+		{"/v/a", "/v/a", true},
+		{"/v/a/x.md", "/v/a", true},
+		{"/v/a/sub/x.md", "/v/a", true},
+		{"/v/ab", "/v/a", false},
+		{"/v/a", "/v/a/sub", false},
+		{"/v/b", "/v/a", false},
+	}
+	for _, tc := range cases {
+		if got := pathIsInside(tc.path, tc.root); got != tc.want {
+			t.Errorf("pathIsInside(%q, %q) = %v, want %v", tc.path, tc.root, got, tc.want)
+		}
+	}
+}

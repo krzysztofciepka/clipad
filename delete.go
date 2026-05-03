@@ -2,7 +2,9 @@ package main
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 )
 
 // countTreeContents walks root and returns the number of files and the number
@@ -26,4 +28,17 @@ func countTreeContents(root string) (files, folders int, err error) {
 		return nil
 	})
 	return files, folders, walkErr
+}
+
+// pathIsInside reports whether path is equal to root or located somewhere
+// beneath it. Both arguments must already be cleaned absolute paths in the
+// same form os.ReadDir / filepath.Join produce, which is the case throughout
+// the model (vault, node.Path, currentFile are all built from the vault root
+// by filepath.Join).
+func pathIsInside(path, root string) bool {
+	if path == root {
+		return true
+	}
+	prefix := root + string(os.PathSeparator)
+	return strings.HasPrefix(path, prefix)
 }
