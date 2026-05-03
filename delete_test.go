@@ -450,3 +450,153 @@ func findNodeByPath(root *TreeNode, path string) *TreeNode {
 	}
 	return nil
 }
+
+func TestCtrlD_DirtyOpenFileInsideTarget_GoesToUnsavedGuard(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	open := filepath.Join(target, "a.md")
+	os.MkdirAll(target, 0o755)
+	os.WriteFile(open, []byte("hello"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.openFile(open)
+	m.editor.SetValue("hello dirty")
+	m.tree.cursor = m.tree.indexOfPath(target)
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	nm := next.(model)
+
+	if nm.inputMode != inputUnsavedGuard {
+		t.Fatalf("inputMode = %v, want inputUnsavedGuard", nm.inputMode)
+	}
+	if nm.pendingAction != pendingDelete {
+		t.Errorf("pendingAction = %v, want pendingDelete", nm.pendingAction)
+	}
+	if nm.pendingDeletePath != target {
+		t.Errorf("pendingDeletePath = %q, want %q", nm.pendingDeletePath, target)
+	}
+}
+
+func TestCtrlD_DirtyOpenFileOutsideTarget_NoGuard(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	other := filepath.Join(vault, "other.md")
+	os.MkdirAll(target, 0o755)
+	os.WriteFile(other, []byte("hello"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.openFile(other)
+	m.editor.SetValue("hello dirty")
+	m.tree.cursor = m.tree.indexOfPath(target)
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	nm := next.(model)
+
+	if nm.inputMode != inputConfirmDelete {
+		t.Errorf("inputMode = %v, want inputConfirmDelete (no guard for outside dirty file)", nm.inputMode)
+	}
+}
+
+func TestUnsavedGuard_DiscardProceedsToConfirm(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	open := filepath.Join(target, "a.md")
+	os.MkdirAll(target, 0o755)
+	os.WriteFile(open, []byte("hello"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.openFile(open)
+	m.editor.SetValue("hello dirty")
+	m.tree.cursor = m.tree.indexOfPath(target)
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	guarded := next.(model)
+	next2, _ := guarded.handleUnsavedGuard(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	nm := next2.(model)
+
+	if nm.inputMode != inputConfirmDelete {
+		t.Errorf("after discard inputMode = %v, want inputConfirmDelete", nm.inputMode)
+	}
+	if nm.pendingAction != pendingNone {
+		t.Errorf("pendingAction = %v, want pendingNone", nm.pendingAction)
+	}
+	if nm.deleteTarget != target {
+		t.Errorf("deleteTarget = %q, want %q", nm.deleteTarget, target)
+	}
+}
+
+func TestUnsavedGuard_EscCancelsDelete(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	open := filepath.Join(target, "a.md")
+	os.MkdirAll(target, 0o755)
+	os.WriteFile(open, []byte("hello"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.openFile(open)
+	m.editor.SetValue("hello dirty")
+	m.tree.cursor = m.tree.indexOfPath(target)
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	guarded := next.(model)
+	next2, _ := guarded.handleUnsavedGuard(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := next2.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("after esc inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("target unexpectedly removed on esc: %v", err)
+	}
+}
+
+func TestUnsavedGuard_SavePersistsThenConfirmDeletesEverything(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	open := filepath.Join(target, "a.md")
+	os.MkdirAll(target, 0o755)
+	os.WriteFile(open, []byte("hello"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.openFile(open)
+	m.editor.SetValue("hello dirty")
+	m.tree.cursor = m.tree.indexOfPath(target)
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	next2, _ := next.(model).handleUnsavedGuard(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	confirming := next2.(model)
+	if confirming.inputMode != inputConfirmDelete {
+		t.Fatalf("after save inputMode = %v, want inputConfirmDelete", confirming.inputMode)
+	}
+	saved, err := os.ReadFile(open)
+	if err != nil {
+		t.Fatalf("read open file: %v", err)
+	}
+	if string(saved) != "hello dirty" {
+		t.Errorf("file on disk = %q, want %q", string(saved), "hello dirty")
+	}
+
+	next3, _ := confirming.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	nm := next3.(model)
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("expected target removed, stat err = %v", err)
+	}
+	if nm.currentFile != "" {
+		t.Errorf("currentFile = %q, want empty", nm.currentFile)
+	}
+}

@@ -899,19 +899,13 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if node == nil {
 			return m, nil
 		}
-		m.deleteTarget = node.Path
-		m.deleteCount = deleteCounts{}
-		if node.IsDir {
-			files, folders, err := countTreeContents(node.Path)
-			if err != nil {
-				m.errMsg = fmt.Sprintf("Delete failed: %v", err)
-				m.deleteTarget = ""
-				return m, nil
-			}
-			m.deleteCount = deleteCounts{files: files, folders: folders}
+		if node.IsDir && m.isDirty() && m.currentFile != "" && pathIsInside(m.currentFile, node.Path) {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingDelete
+			m.pendingDeletePath = node.Path
+			return m, nil
 		}
-		m.inputMode = inputConfirmDelete
-		return m, nil
+		return m.beginDeleteConfirm(node.Path)
 	case "ctrl+e":
 		node := m.tree.selectedNode()
 		if node != nil {
@@ -1510,7 +1504,37 @@ func (m model) executePendingAction() (tea.Model, tea.Cmd) {
 	case pendingNewNote:
 		m.pendingAction = pendingNone
 		m.startNewNote()
+	case pendingDelete:
+		path := m.pendingDeletePath
+		m.pendingAction = pendingNone
+		m.pendingDeletePath = ""
+		return m.beginDeleteConfirm(path)
 	}
+	return m, nil
+}
+
+// beginDeleteConfirm transitions the model into inputConfirmDelete for the
+// node at path. Used both directly from Ctrl+D and from the unsaved-edits
+// guard handoff.
+func (m model) beginDeleteConfirm(path string) (tea.Model, tea.Cmd) {
+	idx := m.tree.indexOfPath(path)
+	if idx < 0 {
+		return m, nil
+	}
+	m.tree.cursor = idx
+	node := m.tree.items[idx].Node
+	m.deleteTarget = path
+	m.deleteCount = deleteCounts{}
+	if node.IsDir {
+		files, folders, err := countTreeContents(path)
+		if err != nil {
+			m.errMsg = fmt.Sprintf("Delete failed: %v", err)
+			m.deleteTarget = ""
+			return m, nil
+		}
+		m.deleteCount = deleteCounts{files: files, folders: folders}
+	}
+	m.inputMode = inputConfirmDelete
 	return m, nil
 }
 
