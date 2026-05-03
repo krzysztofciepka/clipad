@@ -38,7 +38,13 @@ const (
 	pendingSwitchFile
 	pendingQuit
 	pendingNewNote
+	pendingDelete
 )
+
+type deleteCounts struct {
+	files   int
+	folders int
+}
 
 type inputMode int
 
@@ -100,6 +106,10 @@ type model struct {
 
 	pendingAction     pendingActionType
 	pendingSwitchPath string
+	pendingDeletePath string // node path captured when Ctrl+D detours via inputUnsavedGuard
+
+	deleteCount  deleteCounts // (files, folders) inside the folder being confirmed; zeroed for files
+	deleteTarget string       // node.Path of the item awaiting confirmation; "" when not in inputConfirmDelete
 
 	newFolderInput     textinput.Model
 	renameInput        textinput.Model
