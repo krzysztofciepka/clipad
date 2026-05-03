@@ -3,7 +3,10 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestCountTreeContents_Empty(t *testing.T) {
@@ -67,5 +70,152 @@ func TestCountTreeContents_MissingPathReturnsError(t *testing.T) {
 	_, _, err := countTreeContents(filepath.Join(t.TempDir(), "does-not-exist"))
 	if err == nil {
 		t.Fatal("expected error for missing path, got nil")
+	}
+}
+
+func TestCtrlD_OnEmptyFolder_EntersConfirmWithZeroCounts(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(vault, "research"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	idx := m.tree.indexOfPath(filepath.Join(vault, "research"))
+	if idx < 0 {
+		t.Fatalf("research not in tree items")
+	}
+	m.tree.cursor = idx
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	nm := next.(model)
+
+	if nm.inputMode != inputConfirmDelete {
+		t.Fatalf("inputMode = %v, want inputConfirmDelete", nm.inputMode)
+	}
+	if nm.deleteTarget != filepath.Join(vault, "research") {
+		t.Errorf("deleteTarget = %q, want %q", nm.deleteTarget, filepath.Join(vault, "research"))
+	}
+	if nm.deleteCount.files != 0 || nm.deleteCount.folders != 0 {
+		t.Errorf("deleteCount = %+v, want zero", nm.deleteCount)
+	}
+}
+
+func TestCtrlD_OnNonEmptyFolder_CountsContents(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	if err := os.MkdirAll(filepath.Join(target, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "a.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "sub", "b.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	idx := m.tree.indexOfPath(target)
+	if idx < 0 {
+		t.Fatalf("proj not in tree items")
+	}
+	m.tree.cursor = idx
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	nm := next.(model)
+
+	if nm.inputMode != inputConfirmDelete {
+		t.Fatalf("inputMode = %v, want inputConfirmDelete", nm.inputMode)
+	}
+	if nm.deleteCount.files != 2 {
+		t.Errorf("deleteCount.files = %d, want 2", nm.deleteCount.files)
+	}
+	if nm.deleteCount.folders != 1 {
+		t.Errorf("deleteCount.folders = %d, want 1", nm.deleteCount.folders)
+	}
+}
+
+func TestCtrlD_OnAddNoteRow_NoOp(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.tree.cursor = -1
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	nm := next.(model)
+
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if nm.deleteTarget != "" {
+		t.Errorf("deleteTarget = %q, want empty", nm.deleteTarget)
+	}
+}
+
+func TestStatusBarPrompt_FolderEmpty(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(vault, "research"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.width = 80
+	m.height = 24
+	m.tree.cursor = m.tree.indexOfPath(filepath.Join(vault, "research"))
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	out := next.(model).View()
+	if !strings.Contains(out, `Delete folder "research"? (y/n)`) {
+		t.Errorf("View() missing empty-folder prompt; got:\n%s", out)
+	}
+}
+
+func TestStatusBarPrompt_FolderNonEmpty(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	target := filepath.Join(vault, "proj")
+	if err := os.MkdirAll(filepath.Join(target, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(target, "a.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(target, "sub", "b.md"), []byte("x"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.width = 80
+	m.height = 24
+	m.tree.cursor = m.tree.indexOfPath(target)
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	out := next.(model).View()
+	if !strings.Contains(out, `Delete folder "proj" (2 files, 1 folders)? (y/n)`) {
+		t.Errorf("View() missing non-empty folder prompt; got:\n%s", out)
+	}
+}
+
+func TestStatusBarPrompt_FileUnchanged(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	file := filepath.Join(vault, "note.md")
+	os.WriteFile(file, []byte("hi"), 0o644)
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.width = 80
+	m.height = 24
+	m.tree.cursor = m.tree.indexOfPath(file)
+
+	next, _ := m.handleTreeKeys(tea.KeyMsg{Type: tea.KeyCtrlD})
+	out := next.(model).View()
+	if !strings.Contains(out, "Delete note.md? (y/n)") {
+		t.Errorf("View() missing file prompt; got:\n%s", out)
 	}
 }

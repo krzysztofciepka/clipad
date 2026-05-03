@@ -896,9 +896,22 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "ctrl+d":
 		node := m.tree.selectedNode()
-		if node != nil && !node.IsDir {
-			m.inputMode = inputConfirmDelete
+		if node == nil {
+			return m, nil
 		}
+		m.deleteTarget = node.Path
+		m.deleteCount = deleteCounts{}
+		if node.IsDir {
+			files, folders, err := countTreeContents(node.Path)
+			if err != nil {
+				m.errMsg = fmt.Sprintf("Delete failed: %v", err)
+				m.deleteTarget = ""
+				return m, nil
+			}
+			m.deleteCount = deleteCounts{files: files, folders: folders}
+		}
+		m.inputMode = inputConfirmDelete
+		return m, nil
 	case "ctrl+e":
 		node := m.tree.selectedNode()
 		if node != nil {
@@ -1994,11 +2007,22 @@ func (m model) View() string {
 	} else if m.inputMode == inputConfirmDelete {
 		node := m.tree.selectedNode()
 		name := ""
+		isDir := false
 		if node != nil {
 			name = node.Name
+			isDir = node.IsDir
 		}
-		statusView = statusBarStyle.Width(m.width).Render(
-			fmt.Sprintf("Delete %s? (y/n)", name))
+		var prompt string
+		switch {
+		case !isDir:
+			prompt = fmt.Sprintf("Delete %s? (y/n)", name)
+		case m.deleteCount.files == 0 && m.deleteCount.folders == 0:
+			prompt = fmt.Sprintf("Delete folder %q? (y/n)", name)
+		default:
+			prompt = fmt.Sprintf("Delete folder %q (%d files, %d folders)? (y/n)",
+				name, m.deleteCount.files, m.deleteCount.folders)
+		}
+		statusView = statusBarStyle.Width(m.width).Render(prompt)
 	} else if m.inputMode == inputUnsavedGuard {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Unsaved changes. Save? (y/n/Esc)")
