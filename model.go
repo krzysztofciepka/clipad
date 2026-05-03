@@ -1295,6 +1295,9 @@ func (m model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y":
 		node := m.tree.selectedNode()
 		if node != nil {
+			parentPath := filepath.Dir(node.Path)
+			wasLastChild := !m.tree.hasFollowingSiblingAtSameDepth(m.tree.cursor)
+
 			var err error
 			if node.IsDir {
 				err = os.RemoveAll(node.Path)
@@ -1311,6 +1314,7 @@ func (m model) handleDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.tree.currentFile = ""
 				}
 				m.refreshTree()
+				m.placeCursorAfterDelete(parentPath, wasLastChild)
 			}
 		}
 		m.inputMode = inputNone
@@ -1675,6 +1679,27 @@ func (m *model) pasteFile() {
 	m.tree.cutPath = ""
 	m.errMsg = ""
 	m.refreshTree()
+}
+
+// placeCursorAfterDelete repositions the tree cursor following a delete. If
+// the deleted node had a sibling that followed it in the flat view, the
+// natural list collapse already lands the cursor on that sibling, so we leave
+// it alone. Otherwise we set the cursor to the parent's row, or to -1 (the
+// pinned "Add note" row) when the parent is the vault root.
+func (m *model) placeCursorAfterDelete(parentPath string, wasLastChild bool) {
+	if !wasLastChild {
+		m.tree.clampOffset()
+		return
+	}
+	if parentPath == m.vault {
+		m.tree.cursor = -1
+		m.tree.clampOffset()
+		return
+	}
+	if idx := m.tree.indexOfPath(parentPath); idx >= 0 {
+		m.tree.cursor = idx
+	}
+	m.tree.clampOffset()
 }
 
 func (m *model) refreshTree() {

@@ -358,3 +358,95 @@ func TestPathIsInside(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleDeleteConfirm_CursorOnNextSibling(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	os.MkdirAll(filepath.Join(vault, "a"), 0o755)
+	os.MkdirAll(filepath.Join(vault, "b"), 0o755)
+	os.WriteFile(filepath.Join(vault, "b", "keep.md"), []byte("x"), 0o644)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.tree.cursor = m.tree.indexOfPath(filepath.Join(vault, "a"))
+	m.inputMode = inputConfirmDelete
+	m.deleteTarget = filepath.Join(vault, "a")
+
+	next, _ := m.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	nm := next.(model)
+
+	if got := nm.tree.selectedNode(); got == nil || got.Path != filepath.Join(vault, "b") {
+		var p string
+		if got != nil {
+			p = got.Path
+		}
+		t.Errorf("cursor on %q, want %q", p, filepath.Join(vault, "b"))
+	}
+}
+
+func TestHandleDeleteConfirm_LastChildLandsOnParent(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	os.MkdirAll(filepath.Join(vault, "foo", "a"), 0o755)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	fooNode := findNodeByPath(m.treeRoot, filepath.Join(vault, "foo"))
+	if fooNode == nil {
+		t.Fatal("foo not in tree")
+	}
+	fooNode.Expanded = true
+	m.tree.rebuildItems()
+
+	m.tree.cursor = m.tree.indexOfPath(filepath.Join(vault, "foo", "a"))
+	m.inputMode = inputConfirmDelete
+	m.deleteTarget = filepath.Join(vault, "foo", "a")
+
+	next, _ := m.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	nm := next.(model)
+
+	if got := nm.tree.selectedNode(); got == nil || got.Path != filepath.Join(vault, "foo") {
+		var p string
+		if got != nil {
+			p = got.Path
+		}
+		t.Errorf("cursor on %q, want %q (parent)", p, filepath.Join(vault, "foo"))
+	}
+}
+
+func TestHandleDeleteConfirm_LastTopLevelLandsOnAddNoteRow(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	vault := t.TempDir()
+	os.MkdirAll(filepath.Join(vault, "only"), 0o755)
+
+	m := newModel(vault, nil, "", "")
+	m.refreshTree()
+	m.tree.cursor = m.tree.indexOfPath(filepath.Join(vault, "only"))
+	m.inputMode = inputConfirmDelete
+	m.deleteTarget = filepath.Join(vault, "only")
+
+	next, _ := m.handleDeleteConfirm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	nm := next.(model)
+
+	if nm.tree.cursor != -1 {
+		t.Errorf("cursor = %d, want -1 (Add note row)", nm.tree.cursor)
+	}
+}
+
+func findNodeByPath(root *TreeNode, path string) *TreeNode {
+	if root == nil {
+		return nil
+	}
+	if root.Path == path {
+		return root
+	}
+	for _, c := range root.Children {
+		if hit := findNodeByPath(c, path); hit != nil {
+			return hit
+		}
+	}
+	return nil
+}
