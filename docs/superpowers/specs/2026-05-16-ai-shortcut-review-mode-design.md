@@ -163,7 +163,7 @@ Insert a type step: name → description → prompt → **type** → save.
     → `"replace"`.
   - Unrecognised string (e.g. `"foo"`) → `"replace"`.
 - `defaults/ai_shortcuts.toml` parses; the 4 named entries resolve to
-  `review`, the remaining 20 to `replace`.
+  `review`, the remaining 19 to `replace`.
 - `handleShortcutSelect` routes to `inputPluginReview` for a review
   shortcut and `inputPluginDiff` for a replace shortcut.
 - `handlePluginReview`:
