@@ -59,6 +59,36 @@ func pluginReviewView(left, right viewport.Model, focus reviewFocus, width, heig
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 }
 
+// handleReviewMouse scrolls the pane the cursor is over when a wheel event
+// arrives during review mode. X is absolute (the editor area begins at
+// m.treeWidth); the split is at the editor's horizontal midpoint.
+func (m model) handleReviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Button != tea.MouseButtonWheelUp && msg.Button != tea.MouseButtonWheelDown {
+		return m, nil
+	}
+	localX := msg.X - m.treeWidth
+	if m.treeWidth > 0 {
+		localX-- // account for the tree's right-border column, matching hitTestPanel
+	}
+	overLeft := localX < m.editorWidth/2
+	const lines = 3
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		if overLeft {
+			m.pluginDiffViewL.LineUp(lines)
+		} else {
+			m.pluginDiffViewR.LineUp(lines)
+		}
+	case tea.MouseButtonWheelDown:
+		if overLeft {
+			m.pluginDiffViewL.LineDown(lines)
+		} else {
+			m.pluginDiffViewR.LineDown(lines)
+		}
+	}
+	return m, nil
+}
+
 func (m model) handlePluginReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":

@@ -222,3 +222,51 @@ func TestPluginDoneMsg_ReviewNonEmpty_DoesNotClose(t *testing.T) {
 func clipboardReadAllForTest() (string, error) {
 	return clipboard.ReadAll()
 }
+
+func TestHandleReviewMouse_WheelScrollsHoveredPane(t *testing.T) {
+	m := reviewModel(t)
+	m.treeWidth = 0 // editor area starts at x=0; mid = editorWidth/2 = 40
+	m.editorWidth = 80
+	m.pluginDiffViewL = viewport.New(20, 1)
+	m.pluginDiffViewL.SetContent("a\nb\nc\nd\ne")
+	m.pluginDiffViewR = viewport.New(20, 1)
+	m.pluginDiffViewR.SetContent("v\nw\nx\ny\nz")
+
+	// Wheel down over the left half (x=5) scrolls the note pane.
+	leftStart := m.pluginDiffViewL.YOffset
+	m2, _ := m.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown, X: 5, Y: 3})
+	nm := m2.(model)
+	if nm.pluginDiffViewL.YOffset <= leftStart {
+		t.Errorf("left pane did not scroll on wheel over left half")
+	}
+
+	// Wheel down over the right half (x=60) scrolls the review pane.
+	rightStart := nm.pluginDiffViewR.YOffset
+	m3, _ := nm.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown, X: 60, Y: 3})
+	nm2 := m3.(model)
+	if nm2.pluginDiffViewR.YOffset <= rightStart {
+		t.Errorf("right pane did not scroll on wheel over right half")
+	}
+
+	// WheelUp over the right half scrolls the review pane back up.
+	m4, _ := nm2.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonWheelUp, X: 60, Y: 3})
+	nm3 := m4.(model)
+	if nm3.pluginDiffViewR.YOffset >= nm2.pluginDiffViewR.YOffset {
+		t.Errorf("WheelUp did not scroll right pane up: offset %d -> %d",
+			nm2.pluginDiffViewR.YOffset, nm3.pluginDiffViewR.YOffset)
+	}
+
+	// Non-wheel button (Left click) is a no-op: model unchanged.
+	beforeL := nm3.pluginDiffViewL.YOffset
+	beforeR := nm3.pluginDiffViewR.YOffset
+	beforeMode := nm3.inputMode
+	m5, _ := nm3.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonLeft, X: 5, Y: 3})
+	nm4 := m5.(model)
+	if nm4.pluginDiffViewL.YOffset != beforeL || nm4.pluginDiffViewR.YOffset != beforeR {
+		t.Errorf("Left click changed YOffsets: L %d->%d, R %d->%d",
+			beforeL, nm4.pluginDiffViewL.YOffset, beforeR, nm4.pluginDiffViewR.YOffset)
+	}
+	if nm4.inputMode != beforeMode {
+		t.Errorf("Left click changed inputMode: %v -> %v", beforeMode, nm4.inputMode)
+	}
+}

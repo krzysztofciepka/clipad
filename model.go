@@ -597,6 +597,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.inputMode == inputHelp {
 			return handleMouseMsg(m, msg)
 		}
+		if m.inputMode == inputPluginReview {
+			return m.handleReviewMouse(msg)
+		}
 		if m.inputMode != inputNone {
 			return m, nil
 		}
