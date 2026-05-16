@@ -68,7 +68,12 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ctx, cancel := context.WithCancel(context.Background())
 		m.pluginCancel = cancel
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
-		m.inputMode = inputPluginDiff
+		if resolveShortcutType(shortcut) == "review" {
+			m.inputMode = inputPluginReview
+			m.reviewFocus = reviewFocusReview
+		} else {
+			m.inputMode = inputPluginDiff
+		}
 		chunks, errs := runShortcutStream(ctx, shortcut, content, provider, cfg)
 		m.activeChunks = chunks
 		return m, streamPluginCmd(chunks, errs)

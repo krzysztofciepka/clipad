@@ -559,6 +559,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pluginProcessing = false
 		m.pluginCancel = nil
 		m.activeChunks = nil
+		if m.inputMode == inputPluginReview {
+			if m.pluginDiffResult == "" {
+				m.errMsg = "No review generated"
+				m.inputMode = inputNone
+				m.pluginActive = nil
+				m.pluginDiffOriginal = ""
+				m.pluginDiffResult = ""
+			}
+			return m, nil
+		}
 		if m.pluginDiffResult == m.pluginDiffOriginal || m.pluginDiffResult == "" {
 			m.errMsg = "No changes"
 			m.inputMode = inputNone
