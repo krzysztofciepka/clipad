@@ -71,6 +71,7 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if resolveShortcutType(shortcut) == "review" {
 			m.inputMode = inputPluginReview
 			m.reviewFocus = reviewFocusReview
+			m.aiRunOnSelection = false
 		} else {
 			m.inputMode = inputPluginDiff
 		}

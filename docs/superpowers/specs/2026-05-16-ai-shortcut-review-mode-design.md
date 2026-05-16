@@ -62,7 +62,7 @@ constant. Resolution is read-time only; clipad never rewrites a user's
 
 `defaults/ai_shortcuts.toml` is updated so every entry has an explicit
 `type`: `type = 'review'` for `critique`, `questions`, `risks`, `outline`;
-`type = 'replace'` for the other 20.
+`type = 'replace'` for the other 19.
 
 ### 2. Run dispatch
 
