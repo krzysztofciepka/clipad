@@ -137,6 +137,61 @@ func TestLoadShortcuts_KeepsExplicitlyEmpty(t *testing.T) {
 	}
 }
 
+func TestResolveShortcutType(t *testing.T) {
+	cases := []struct {
+		name string
+		in   AIShortcut
+		want string
+	}{
+		{"explicit replace", AIShortcut{Name: "x", Type: "replace"}, "replace"},
+		{"explicit review", AIShortcut{Name: "x", Type: "review"}, "review"},
+		{"empty critique infers review", AIShortcut{Name: "critique"}, "review"},
+		{"empty questions infers review", AIShortcut{Name: "questions"}, "review"},
+		{"empty risks infers review", AIShortcut{Name: "risks"}, "review"},
+		{"empty outline infers review", AIShortcut{Name: "outline"}, "review"},
+		{"empty replace built-in", AIShortcut{Name: "tighten"}, "replace"},
+		{"empty custom name", AIShortcut{Name: "my-custom"}, "replace"},
+		{"unrecognised type string", AIShortcut{Name: "critique", Type: "bogus"}, "review"},
+		{"unrecognised type custom name", AIShortcut{Name: "foo", Type: "bogus"}, "replace"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := resolveShortcutType(c.in); got != c.want {
+				t.Errorf("resolveShortcutType(%+v) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestDefaultShortcuts_HaveResolvedTypes(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	loaded, err := loadShortcuts()
+	if err != nil {
+		t.Fatalf("loadShortcuts() error: %v", err)
+	}
+
+	wantReview := map[string]bool{"critique": true, "questions": true, "risks": true, "outline": true}
+	seenReview := map[string]bool{}
+	for _, s := range loaded {
+		got := resolveShortcutType(s)
+		if wantReview[s.Name] {
+			if got != "review" {
+				t.Errorf("%q: type = %q, want review", s.Name, got)
+			}
+			seenReview[s.Name] = true
+		} else if got != "replace" {
+			t.Errorf("%q: type = %q, want replace", s.Name, got)
+		}
+	}
+	for name := range wantReview {
+		if !seenReview[name] {
+			t.Errorf("expected built-in %q not found in defaults", name)
+		}
+	}
+}
+
 func TestDefaultShortcutsEmbeddedTOMLParses(t *testing.T) {
 	var cfg aiShortcutsConfig
 	if err := toml.Unmarshal(defaultShortcutsTOML, &cfg); err != nil {

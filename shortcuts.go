@@ -17,6 +17,31 @@ type AIShortcut struct {
 	Name        string `toml:"name"`
 	Description string `toml:"description"`
 	Prompt      string `toml:"prompt"`
+	Type        string `toml:"type"`
+}
+
+// inferredReviewNames is the set of built-in shortcut names that resolve to
+// the "review" type when a shortcut has no explicit type (e.g. configs saved
+// before the type field existed).
+var inferredReviewNames = map[string]bool{
+	"critique":  true,
+	"questions": true,
+	"risks":     true,
+	"outline":   true,
+}
+
+// resolveShortcutType returns the effective type for a shortcut: "replace"
+// or "review". An explicit valid type wins; otherwise the type is inferred
+// from the shortcut name.
+func resolveShortcutType(s AIShortcut) string {
+	switch s.Type {
+	case "replace", "review":
+		return s.Type
+	}
+	if inferredReviewNames[s.Name] {
+		return "review"
+	}
+	return "replace"
 }
 
 type aiShortcutsConfig struct {
