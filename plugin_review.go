@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// reviewRightWidth is the inner width of the review (right) pane, matching
-// the geometry newDiffViewports uses for the right viewport.
-func reviewRightWidth(editorWidth int) int {
+// paneRightWidth is the inner width of the right pane in the side-by-side
+// diff/review views, matching the geometry newDiffViewports uses.
+func paneRightWidth(editorWidth int) int {
 	w := editorWidth - editorWidth/2 - 3
 	if w < 1 {
 		w = 1
@@ -17,11 +17,11 @@ func reviewRightWidth(editorWidth int) int {
 	return w
 }
 
-// reviewRightContent renders the AI review as markdown for the read-only
-// review pane (the review text is never edited, so it is shown the same way
-// the editor's Ctrl+P preview renders notes). Falls back to wrapped plain
-// text if markdown rendering fails.
-func reviewRightContent(result string, width int) string {
+// paneRightMarkdown renders the AI output as markdown for the right pane of
+// the diff/review views. The AI output is shown the same way the editor's
+// Ctrl+P preview renders notes; the raw text (m.pluginDiffResult) is what an
+// accept actually inserts. Falls back to wrapped plain text on render error.
+func paneRightMarkdown(result string, width int) string {
 	rendered, err := renderMarkdown(result, width)
 	if err != nil {
 		return wordWrap(result, width)
@@ -29,12 +29,37 @@ func reviewRightContent(result string, width int) string {
 	return rendered
 }
 
-type reviewFocus int
+// paneFocus is which pane scroll/keys act on in the side-by-side diff and
+// review views.
+type paneFocus int
 
 const (
-	reviewFocusReview reviewFocus = iota // default: the AI review pane (right)
-	reviewFocusNote                      // the original note pane (left)
+	paneFocusRight paneFocus = iota // default: the AI output pane (right)
+	paneFocusLeft                   // the original note pane (left)
 )
+
+// togglePaneFocus flips focus between the two side-by-side panes.
+func togglePaneFocus(f paneFocus) paneFocus {
+	if f == paneFocusLeft {
+		return paneFocusRight
+	}
+	return paneFocusLeft
+}
+
+// scrollFocusedPane scrolls the currently focused side-by-side pane by n
+// lines (down when down is true, otherwise up).
+func (m *model) scrollFocusedPane(down bool, n int) {
+	switch {
+	case m.paneFocus == paneFocusLeft && down:
+		m.pluginDiffViewL.LineDown(n)
+	case m.paneFocus == paneFocusLeft:
+		m.pluginDiffViewL.LineUp(n)
+	case down:
+		m.pluginDiffViewR.LineDown(n)
+	default:
+		m.pluginDiffViewR.LineUp(n)
+	}
+}
 
 var (
 	reviewHeaderNoteStyle = lipgloss.NewStyle().
@@ -47,11 +72,13 @@ var (
 				Foreground(lipgloss.Color("75")).
 				Padding(0, 1)
 
-	reviewFocusedHeaderStyle = lipgloss.NewStyle().
-					Bold(true).
-					Foreground(lipgloss.Color("0")).
-					Background(lipgloss.Color("75")).
-					Padding(0, 1)
+	// paneFocusedHeaderStyle highlights the focused pane's header in both
+	// the diff and review side-by-side views.
+	paneFocusedHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("0")).
+				Background(lipgloss.Color("75")).
+				Padding(0, 1)
 
 	reviewBorderStyle = lipgloss.NewStyle().
 				BorderRight(true).
@@ -61,13 +88,13 @@ var (
 // pluginReviewView renders the read-only side-by-side review: the original
 // note on the left, the AI-generated review on the right. The focused pane's
 // header is highlighted.
-func pluginReviewView(left, right viewport.Model, focus reviewFocus, width, height int) string {
+func pluginReviewView(left, right viewport.Model, focus paneFocus, width, height int) string {
 	noteHeader := reviewHeaderNoteStyle.Render("── Note ──")
 	reviewHeader := reviewHeaderReviewStyle.Render("── Review ──")
-	if focus == reviewFocusNote {
-		noteHeader = reviewFocusedHeaderStyle.Render("── Note ──")
+	if focus == paneFocusLeft {
+		noteHeader = paneFocusedHeaderStyle.Render("── Note ──")
 	} else {
-		reviewHeader = reviewFocusedHeaderStyle.Render("── Review ──")
+		reviewHeader = paneFocusedHeaderStyle.Render("── Review ──")
 	}
 
 	halfWidth := width / 2
@@ -81,10 +108,11 @@ func pluginReviewView(left, right viewport.Model, focus reviewFocus, width, heig
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 }
 
-// handleReviewMouse scrolls the pane the cursor is over when a wheel event
-// arrives during review mode. X is absolute (the editor area begins at
-// m.treeWidth); the split is at the editor's horizontal midpoint.
-func (m model) handleReviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+// handlePaneMouse scrolls the pane the cursor is over when a wheel event
+// arrives during the diff or review side-by-side views. X is absolute (the
+// editor area begins at m.treeWidth); the split is at the editor's
+// horizontal midpoint.
+func (m model) handlePaneMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Button != tea.MouseButtonWheelUp && msg.Button != tea.MouseButtonWheelDown {
 		return m, nil
 	}
@@ -114,25 +142,13 @@ func (m model) handleReviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handlePluginReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		if m.reviewFocus == reviewFocusReview {
-			m.reviewFocus = reviewFocusNote
-		} else {
-			m.reviewFocus = reviewFocusReview
-		}
+		m.paneFocus = togglePaneFocus(m.paneFocus)
 		return m, nil
 	case "up", "k":
-		if m.reviewFocus == reviewFocusNote {
-			m.pluginDiffViewL.LineUp(1)
-		} else {
-			m.pluginDiffViewR.LineUp(1)
-		}
+		m.scrollFocusedPane(false, 1)
 		return m, nil
 	case "down", "j":
-		if m.reviewFocus == reviewFocusNote {
-			m.pluginDiffViewL.LineDown(1)
-		} else {
-			m.pluginDiffViewR.LineDown(1)
-		}
+		m.scrollFocusedPane(true, 1)
 		return m, nil
 	case "c":
 		_ = clipboard.WriteAll(m.pluginDiffResult)

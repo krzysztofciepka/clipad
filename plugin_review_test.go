@@ -13,7 +13,7 @@ import (
 
 func TestPluginReviewView_ShowsNoteAndReviewHeaders(t *testing.T) {
 	left, right := newDiffViewports("the original note", "the AI review", 80, 10)
-	out := pluginReviewView(left, right, reviewFocusReview, 80, 10)
+	out := pluginReviewView(left, right, paneFocusRight, 80, 10)
 	if !strings.Contains(out, "Note") {
 		t.Errorf("review view missing 'Note' header:\n%s", out)
 	}
@@ -34,13 +34,13 @@ func TestPluginReviewView_FocusIsRenderable(t *testing.T) {
 
 	left, right := newDiffViewports("a", "b", 80, 10)
 	// Both focus states must render without panicking and produce output.
-	a := pluginReviewView(left, right, reviewFocusNote, 80, 10)
-	b := pluginReviewView(left, right, reviewFocusReview, 80, 10)
+	a := pluginReviewView(left, right, paneFocusLeft, 80, 10)
+	b := pluginReviewView(left, right, paneFocusRight, 80, 10)
 	if a == "" {
-		t.Error("reviewFocusNote produced empty view")
+		t.Error("paneFocusLeft produced empty view")
 	}
 	if b == "" {
-		t.Error("reviewFocusReview produced empty view")
+		t.Error("paneFocusRight produced empty view")
 	}
 	if a == b {
 		t.Error("focus has no visible effect on rendering")
@@ -76,8 +76,8 @@ func TestShortcutSelect_ReviewType_EntersReviewMode(t *testing.T) {
 	if nm.inputMode != inputPluginReview {
 		t.Fatalf("inputMode = %v, want inputPluginReview", nm.inputMode)
 	}
-	if nm.reviewFocus != reviewFocusReview {
-		t.Errorf("reviewFocus = %v, want reviewFocusReview (default)", nm.reviewFocus)
+	if nm.paneFocus != paneFocusRight {
+		t.Errorf("paneFocus = %v, want paneFocusRight (default)", nm.paneFocus)
 	}
 }
 
@@ -106,7 +106,7 @@ func reviewModel(t *testing.T) model {
 	m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
 		m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
 	m.inputMode = inputPluginReview
-	m.reviewFocus = reviewFocusReview
+	m.paneFocus = paneFocusRight
 	m.pluginActive = &fakePlugin{name: "fake"}
 	return m
 }
@@ -115,12 +115,12 @@ func TestHandlePluginReview_TabTogglesFocus(t *testing.T) {
 	m := reviewModel(t)
 	next, _ := m.handlePluginReview(tea.KeyMsg{Type: tea.KeyTab})
 	nm := next.(model)
-	if nm.reviewFocus != reviewFocusNote {
-		t.Fatalf("after Tab: reviewFocus = %v, want reviewFocusNote", nm.reviewFocus)
+	if nm.paneFocus != paneFocusLeft {
+		t.Fatalf("after Tab: paneFocus = %v, want paneFocusLeft", nm.paneFocus)
 	}
 	next2, _ := nm.handlePluginReview(tea.KeyMsg{Type: tea.KeyTab})
-	if next2.(model).reviewFocus != reviewFocusReview {
-		t.Errorf("after second Tab: want reviewFocusReview")
+	if next2.(model).paneFocus != paneFocusRight {
+		t.Errorf("after second Tab: want paneFocusRight")
 	}
 }
 
@@ -234,7 +234,7 @@ func TestHandleReviewMouse_WheelScrollsHoveredPane(t *testing.T) {
 
 	// Wheel down over the left half (x=5) scrolls the note pane.
 	leftStart := m.pluginDiffViewL.YOffset
-	m2, _ := m.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown, X: 5, Y: 3})
+	m2, _ := m.handlePaneMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown, X: 5, Y: 3})
 	nm := m2.(model)
 	if nm.pluginDiffViewL.YOffset <= leftStart {
 		t.Errorf("left pane did not scroll on wheel over left half")
@@ -242,14 +242,14 @@ func TestHandleReviewMouse_WheelScrollsHoveredPane(t *testing.T) {
 
 	// Wheel down over the right half (x=60) scrolls the review pane.
 	rightStart := nm.pluginDiffViewR.YOffset
-	m3, _ := nm.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown, X: 60, Y: 3})
+	m3, _ := nm.handlePaneMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown, X: 60, Y: 3})
 	nm2 := m3.(model)
 	if nm2.pluginDiffViewR.YOffset <= rightStart {
 		t.Errorf("right pane did not scroll on wheel over right half")
 	}
 
 	// WheelUp over the right half scrolls the review pane back up.
-	m4, _ := nm2.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonWheelUp, X: 60, Y: 3})
+	m4, _ := nm2.handlePaneMouse(tea.MouseMsg{Button: tea.MouseButtonWheelUp, X: 60, Y: 3})
 	nm3 := m4.(model)
 	if nm3.pluginDiffViewR.YOffset >= nm2.pluginDiffViewR.YOffset {
 		t.Errorf("WheelUp did not scroll right pane up: offset %d -> %d",
@@ -260,7 +260,7 @@ func TestHandleReviewMouse_WheelScrollsHoveredPane(t *testing.T) {
 	beforeL := nm3.pluginDiffViewL.YOffset
 	beforeR := nm3.pluginDiffViewR.YOffset
 	beforeMode := nm3.inputMode
-	m5, _ := nm3.handleReviewMouse(tea.MouseMsg{Button: tea.MouseButtonLeft, X: 5, Y: 3})
+	m5, _ := nm3.handlePaneMouse(tea.MouseMsg{Button: tea.MouseButtonLeft, X: 5, Y: 3})
 	nm4 := m5.(model)
 	if nm4.pluginDiffViewL.YOffset != beforeL || nm4.pluginDiffViewR.YOffset != beforeR {
 		t.Errorf("Left click changed YOffsets: L %d->%d, R %d->%d",
@@ -273,9 +273,9 @@ func TestHandleReviewMouse_WheelScrollsHoveredPane(t *testing.T) {
 
 func TestReviewRightContent_RendersMarkdown(t *testing.T) {
 	in := "# Heading\n\nSome *body* text here."
-	got := reviewRightContent(in, 40)
+	got := paneRightMarkdown(in, 40)
 	if got == "" {
-		t.Fatal("reviewRightContent returned empty")
+		t.Fatal("paneRightMarkdown returned empty")
 	}
 	if strings.Contains(got, "# Heading") {
 		t.Errorf("markdown syntax not consumed (still raw):\n%s", got)
@@ -284,7 +284,7 @@ func TestReviewRightContent_RendersMarkdown(t *testing.T) {
 		t.Errorf("rendered output missing source text:\n%s", got)
 	}
 	if got == wordWrap(in, 40) {
-		t.Errorf("reviewRightContent did not render markdown (equals raw wordWrap)")
+		t.Errorf("paneRightMarkdown did not render markdown (equals raw wordWrap)")
 	}
 }
 
@@ -296,7 +296,7 @@ func TestPluginDoneMsg_ReviewNonEmpty_RendersMarkdownInPane(t *testing.T) {
 	m.pluginDiffOriginal = "the note"
 	m.pluginDiffResult = "# Review\n\nsome details"
 	m.inputMode = inputPluginReview
-	m.reviewFocus = reviewFocusReview
+	m.paneFocus = paneFocusRight
 	m.pluginActive = &fakePlugin{name: "fake"}
 	ch := make(chan string)
 	close(ch)

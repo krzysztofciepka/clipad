@@ -156,8 +156,8 @@ type model struct {
 	shortcutNameInput        textinput.Model
 	shortcutDescriptionInput textinput.Model
 	shortcutPromptInput      textinput.Model
-	activeShortcutProvider   string      // which AI provider runs shortcuts; cycled with 'p'
-	reviewFocus              reviewFocus // which pane scroll/keys act on in inputPluginReview
+	activeShortcutProvider   string    // which AI provider runs shortcuts; cycled with 'p'
+	paneFocus                paneFocus // which pane scroll/keys act on in the diff/review views
 
 	// Git sync
 	gitSyncRunning  bool
@@ -577,14 +577,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.closePluginRun("No review generated")
 				return m, nil
 			}
-			m.pluginDiffViewR.SetContent(
-				reviewRightContent(m.pluginDiffResult, reviewRightWidth(m.editorWidth)))
-			m.pluginDiffViewR.GotoTop()
+		} else if m.pluginDiffResult == m.pluginDiffOriginal || m.pluginDiffResult == "" {
+			m.closePluginRun("No changes")
 			return m, nil
 		}
-		if m.pluginDiffResult == m.pluginDiffOriginal || m.pluginDiffResult == "" {
-			m.closePluginRun("No changes")
-		}
+		// Diff/review complete: show the AI output as rendered markdown
+		// (the raw m.pluginDiffResult is still what an accept inserts).
+		m.pluginDiffViewR.SetContent(
+			paneRightMarkdown(m.pluginDiffResult, paneRightWidth(m.editorWidth)))
+		m.pluginDiffViewR.GotoTop()
 		return m, nil
 
 	case pluginErrMsg:
@@ -604,8 +605,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.inputMode == inputHelp {
 			return handleMouseMsg(m, msg)
 		}
-		if m.inputMode == inputPluginReview {
-			return m.handleReviewMouse(msg)
+		if m.inputMode == inputPluginReview || m.inputMode == inputPluginDiff {
+			return m.handlePaneMouse(msg)
 		}
 		if m.inputMode != inputNone {
 			return m, nil
@@ -1889,9 +1890,9 @@ func (m *model) recalcLayout() {
 	if m.inputMode == inputPluginDiff || m.inputMode == inputPluginReview {
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
 			m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
-		if m.inputMode == inputPluginReview && !m.pluginProcessing && m.pluginDiffResult != "" {
+		if !m.pluginProcessing && m.pluginDiffResult != "" {
 			m.pluginDiffViewR.SetContent(
-				reviewRightContent(m.pluginDiffResult, reviewRightWidth(m.editorWidth)))
+				paneRightMarkdown(m.pluginDiffResult, paneRightWidth(m.editorWidth)))
 		}
 	}
 	if m.inputMode == inputHelp {
@@ -1944,9 +1945,9 @@ func (m model) View() string {
 	} else if m.inputMode == inputShortcutType {
 		rightView = shortcutTypeSelectorView(m.shortcutTypeCursor, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginDiff {
-		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
+		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.paneFocus, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginReview {
-		rightView = pluginReviewView(m.pluginDiffViewL, m.pluginDiffViewR, m.reviewFocus, m.editorWidth, m.editorHeight)
+		rightView = pluginReviewView(m.pluginDiffViewL, m.pluginDiffViewR, m.paneFocus, m.editorWidth, m.editorHeight)
 	} else if m.currentFile == "" && m.newNoteDir == "" {
 		placeholder := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).

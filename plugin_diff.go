@@ -7,21 +7,19 @@ import (
 )
 
 var (
-	diffHeaderOriginal = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("196")).
-		Padding(0, 1).
-		Render("── Original ──")
+	diffHeaderOriginalStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("196")).
+				Padding(0, 1)
 
-	diffHeaderNew = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("76")).
-		Padding(0, 1).
-		Render("── New ──")
+	diffHeaderNewStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("76")).
+				Padding(0, 1)
 
 	diffBorderStyle = lipgloss.NewStyle().
-		BorderRight(true).
-		BorderStyle(lipgloss.NormalBorder())
+			BorderRight(true).
+			BorderStyle(lipgloss.NormalBorder())
 )
 
 func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -60,26 +58,35 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, tea.Quit
+	case "tab":
+		m.paneFocus = togglePaneFocus(m.paneFocus)
+		return m, nil
 	case "up", "k":
-		m.pluginDiffViewL.LineUp(1)
-		m.pluginDiffViewR.LineUp(1)
+		m.scrollFocusedPane(false, 1)
 		return m, nil
 	case "down", "j":
-		m.pluginDiffViewL.LineDown(1)
-		m.pluginDiffViewR.LineDown(1)
+		m.scrollFocusedPane(true, 1)
 		return m, nil
 	}
 	return m, nil
 }
 
-func pluginDiffView(left, right viewport.Model, width, height int) string {
+func pluginDiffView(left, right viewport.Model, focus paneFocus, width, height int) string {
+	originalHeader := diffHeaderOriginalStyle.Render("── Original ──")
+	newHeader := diffHeaderNewStyle.Render("── New ──")
+	if focus == paneFocusLeft {
+		originalHeader = paneFocusedHeaderStyle.Render("── Original ──")
+	} else {
+		newHeader = paneFocusedHeaderStyle.Render("── New ──")
+	}
+
 	halfWidth := width / 2
 
 	leftPanel := diffBorderStyle.Width(halfWidth).Height(height).Render(
-		diffHeaderOriginal + "\n" + left.View())
+		originalHeader + "\n" + left.View())
 
 	rightPanel := lipgloss.NewStyle().Width(width - halfWidth - 1).Height(height).Render(
-		diffHeaderNew + "\n" + right.View())
+		newHeader + "\n" + right.View())
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 }

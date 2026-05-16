@@ -88,6 +88,9 @@ var helpSections = []helpSection{
 		entries: []helpEntry{
 			{"y", "Accept changes"},
 			{"n", "Reject changes"},
+			{"Tab", "Switch pane"},
+			{"↑ / ↓ / j / k", "Scroll focused pane"},
+			{"Mouse wheel", "Scroll hovered pane"},
 		},
 	},
 	{

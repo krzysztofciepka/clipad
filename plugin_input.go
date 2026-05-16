@@ -80,6 +80,7 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				ctx, cancel := context.WithCancel(context.Background())
 				m.pluginCancel = cancel
 				m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
+				m.paneFocus = paneFocusRight
 				m.inputMode = inputPluginDiff
 				chunks, errs := runShortcutStream(ctx, shortcut, content, provider, cfg)
 				m.activeChunks = chunks
@@ -129,6 +130,7 @@ func (m model) handlePluginPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ctx, cancel := context.WithCancel(context.Background())
 		m.pluginCancel = cancel
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
+		m.paneFocus = paneFocusRight
 		m.inputMode = inputPluginDiff
 		chunks, errs := m.pluginActive.Run(ctx, content, prompt, cfg)
 		m.activeChunks = chunks

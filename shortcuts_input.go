@@ -68,9 +68,9 @@ func (m model) handleShortcutSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ctx, cancel := context.WithCancel(context.Background())
 		m.pluginCancel = cancel
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
+		m.paneFocus = paneFocusRight
 		if resolveShortcutType(shortcut) == "review" {
 			m.inputMode = inputPluginReview
-			m.reviewFocus = reviewFocusReview
 			m.aiRunOnSelection = false
 		} else {
 			m.inputMode = inputPluginDiff
