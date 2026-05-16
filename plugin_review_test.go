@@ -270,3 +270,51 @@ func TestHandleReviewMouse_WheelScrollsHoveredPane(t *testing.T) {
 		t.Errorf("Left click changed inputMode: %v -> %v", beforeMode, nm4.inputMode)
 	}
 }
+
+func TestReviewRightContent_RendersMarkdown(t *testing.T) {
+	in := "# Heading\n\nSome *body* text here."
+	got := reviewRightContent(in, 40)
+	if got == "" {
+		t.Fatal("reviewRightContent returned empty")
+	}
+	if strings.Contains(got, "# Heading") {
+		t.Errorf("markdown syntax not consumed (still raw):\n%s", got)
+	}
+	if !strings.Contains(got, "Heading") || !strings.Contains(got, "body") {
+		t.Errorf("rendered output missing source text:\n%s", got)
+	}
+	if got == wordWrap(in, 40) {
+		t.Errorf("reviewRightContent did not render markdown (equals raw wordWrap)")
+	}
+}
+
+func TestPluginDoneMsg_ReviewNonEmpty_RendersMarkdownInPane(t *testing.T) {
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editorWidth = 80
+	m.editorHeight = 10
+	m.pluginDiffOriginal = "the note"
+	m.pluginDiffResult = "# Review\n\nsome details"
+	m.inputMode = inputPluginReview
+	m.reviewFocus = reviewFocusReview
+	m.pluginActive = &fakePlugin{name: "fake"}
+	ch := make(chan string)
+	close(ch)
+	m.activeChunks = ch
+	m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
+		m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
+
+	next, _ := m.Update(pluginDoneMsg{chunks: ch})
+	nm := next.(model)
+
+	if nm.inputMode != inputPluginReview {
+		t.Fatalf("inputMode = %v, want inputPluginReview (non-empty review stays open)", nm.inputMode)
+	}
+	view := nm.pluginDiffViewR.View()
+	if strings.Contains(view, "# Review") {
+		t.Errorf("review pane still shows raw markdown syntax:\n%s", view)
+	}
+	if !strings.Contains(view, "Review") || !strings.Contains(view, "details") {
+		t.Errorf("review pane missing rendered text:\n%s", view)
+	}
+}

@@ -7,6 +7,28 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// reviewRightWidth is the inner width of the review (right) pane, matching
+// the geometry newDiffViewports uses for the right viewport.
+func reviewRightWidth(editorWidth int) int {
+	w := editorWidth - editorWidth/2 - 3
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// reviewRightContent renders the AI review as markdown for the read-only
+// review pane (the review text is never edited, so it is shown the same way
+// the editor's Ctrl+P preview renders notes). Falls back to wrapped plain
+// text if markdown rendering fails.
+func reviewRightContent(result string, width int) string {
+	rendered, err := renderMarkdown(result, width)
+	if err != nil {
+		return wordWrap(result, width)
+	}
+	return rendered
+}
+
 type reviewFocus int
 
 const (

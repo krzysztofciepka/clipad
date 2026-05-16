@@ -575,7 +575,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.inputMode == inputPluginReview {
 			if m.pluginDiffResult == "" {
 				m.closePluginRun("No review generated")
+				return m, nil
 			}
+			m.pluginDiffViewR.SetContent(
+				reviewRightContent(m.pluginDiffResult, reviewRightWidth(m.editorWidth)))
+			m.pluginDiffViewR.GotoTop()
 			return m, nil
 		}
 		if m.pluginDiffResult == m.pluginDiffOriginal || m.pluginDiffResult == "" {
@@ -1885,6 +1889,10 @@ func (m *model) recalcLayout() {
 	if m.inputMode == inputPluginDiff || m.inputMode == inputPluginReview {
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
 			m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
+		if m.inputMode == inputPluginReview && !m.pluginProcessing && m.pluginDiffResult != "" {
+			m.pluginDiffViewR.SetContent(
+				reviewRightContent(m.pluginDiffResult, reviewRightWidth(m.editorWidth)))
+		}
 	}
 	if m.inputMode == inputHelp {
 		m.helpViewport.Width = m.editorWidth
