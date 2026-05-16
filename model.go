@@ -57,6 +57,7 @@ const (
 	inputPluginConfig
 	inputPluginPrompt
 	inputPluginDiff
+	inputPluginReview
 	inputNewFolder
 	inputReplaceSearch
 	inputReplaceWith
@@ -142,9 +143,9 @@ type model struct {
 	activeChunks       <-chan string
 
 	// AI shortcuts
-	shortcuts              []AIShortcut
-	shortcutCursor         int
-	shortcutEditing        int
+	shortcuts                []AIShortcut
+	shortcutCursor           int
+	shortcutEditing          int
 	shortcutTempName         string
 	shortcutTempDescription  string
 	aiRunOnSelection         bool
@@ -152,7 +153,8 @@ type model struct {
 	shortcutNameInput        textinput.Model
 	shortcutDescriptionInput textinput.Model
 	shortcutPromptInput      textinput.Model
-	activeShortcutProvider string // which AI provider runs shortcuts; cycled with 'p'
+	activeShortcutProvider   string      // which AI provider runs shortcuts; cycled with 'p'
+	reviewFocus              reviewFocus // which pane scroll/keys act on in inputPluginReview
 
 	// Git sync
 	gitSyncRunning  bool
@@ -256,28 +258,28 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 	del.Prompt = "Move to: "
 
 	m := model{
-		vault:                  vault,
-		activePanel:            treePanel,
-		editorMode:             modeEdit,
-		editor:                 newSelectableEditor(),
-		filterInput:            fi,
-		newFolderInput:         nf,
-		renameInput:            rn,
-		replaceSearchInput:     rs,
-		replaceWithInput:       rw,
-		plugins:                plugins,
-		pluginPromptInput:      pi,
+		vault:                    vault,
+		activePanel:              treePanel,
+		editorMode:               modeEdit,
+		editor:                   newSelectableEditor(),
+		filterInput:              fi,
+		newFolderInput:           nf,
+		renameInput:              rn,
+		replaceSearchInput:       rs,
+		replaceWithInput:         rw,
+		plugins:                  plugins,
+		pluginPromptInput:        pi,
 		shortcutNameInput:        sn,
 		shortcutDescriptionInput: sd,
 		shortcutPromptInput:      sp,
-		shortcutEditing:        -1,
-		gitRemoteInput:         gr,
-		activeShortcutProvider: activeShortcutProvider,
-		vaultSearchInput:       vsi,
-		chatInput:              ci,
-		captureInput:           cap,
-		delegateInput:          del,
-		inboxPath:              inboxPath,
+		shortcutEditing:          -1,
+		gitRemoteInput:           gr,
+		activeShortcutProvider:   activeShortcutProvider,
+		vaultSearchInput:         vsi,
+		chatInput:                ci,
+		captureInput:             cap,
+		delegateInput:            del,
+		inboxPath:                inboxPath,
 	}
 
 	root, err := buildTree(vault)
@@ -1213,7 +1215,6 @@ func (m model) handleHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-
 func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
@@ -1553,7 +1554,6 @@ func (m *model) openFile(path string) {
 	m.errMsg = ""
 }
 
-
 func (m *model) previewSelectedFile() {
 	node := m.tree.selectedNode()
 	if node == nil || node.IsDir {
@@ -1576,7 +1576,6 @@ func (m *model) previewSelectedFile() {
 	m.editor.Blur()
 	m.activePanel = treePanel
 }
-
 
 func (m *model) startNewNote() {
 	// Determine target directory from selected tree node
@@ -1659,8 +1658,6 @@ func noteNameFromContent(content string) string {
 	}
 	return firstLine
 }
-
-
 
 func (m *model) pasteFile() {
 	src := m.fileClip.path
@@ -1883,8 +1880,6 @@ func (m model) View() string {
 		return "Loading..."
 	}
 
-
-
 	var treeView string
 	if m.treeWidth > 0 {
 		treeView = m.tree.View(m.activePanel == treePanel)
@@ -2106,8 +2101,6 @@ func (m model) View() string {
 	}
 	return strings.Join(lines, "\n")
 }
-
-
 
 func (m model) filterView() string {
 	var b strings.Builder
