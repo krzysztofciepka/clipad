@@ -9,8 +9,9 @@ Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss,
 - **File tree** with nested folders, expand/collapse, fuzzy search
 - **Markdown editor** with line numbers and preview rendering
 - **Plugin system** with blackbox.ai and OpenRouter integrations for LLM-powered note transformation (rephrase, translate, redraft)
+- **AI shortcuts** with two modes per shortcut: *replace* (diff + accept) or *review* (read-only side-by-side commentary that never edits the note)
 - **Find & replace** with live highlighting and match count
-- **Side-by-side diff view** for reviewing plugin changes
+- **Side-by-side diff view** for reviewing plugin changes, plus a read-only review view for commentary-style shortcuts
 - **Adaptive layout** that scales to narrow terminals
 - **First-run setup** with interactive vault path configuration
 
@@ -146,7 +147,7 @@ Plugin config is stored at `~/.config/clipad/plugins/openrouter.toml`.
 
 ### AI Shortcuts
 
-Quick text transformations powered by your configured LLM. Press `Ctrl+G`, pick a shortcut, and the model rewrites or augments the current note. The diff view lets you accept or reject the change.
+Quick text transformations powered by your configured LLM. Press `Ctrl+G`, pick a shortcut, and the model rewrites or augments the current note. The diff view lets you accept or reject the change. Each AI shortcut has a type — `replace` rewrites the note via the diff+accept flow; `review` opens a read-only side-by-side pane you can scroll and copy from. When creating a shortcut you choose its type as the final step.
 
 If text is selected when you trigger a plugin or shortcut, only the selected text is sent to the LLM and the diff/accept flow replaces just that selection. With no selection, the whole note is rewritten as before.
 

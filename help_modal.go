@@ -91,6 +91,16 @@ var helpSections = []helpSection{
 		},
 	},
 	{
+		title: "Review View",
+		entries: []helpEntry{
+			{"Tab", "Switch pane"},
+			{"↑ / ↓ / j / k", "Scroll focused pane"},
+			{"Mouse wheel", "Scroll hovered pane"},
+			{"c", "Copy review to clipboard"},
+			{"Esc / q", "Close (note unchanged)"},
+		},
+	},
+	{
 		title: "Vault Search",
 		entries: []helpEntry{
 			{"Type", "Live semantic search across all notes"},

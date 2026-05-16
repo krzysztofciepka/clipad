@@ -74,3 +74,13 @@ func TestHelpModal_WheelScrollsViewport(t *testing.T) {
 			startY, m.helpViewport.YOffset)
 	}
 }
+
+func TestHelpContent_IncludesReviewMode(t *testing.T) {
+	out := helpContent(80)
+	if !strings.Contains(out, "Review View") {
+		t.Errorf("help content missing Review View section:\n%s", out)
+	}
+	if !strings.Contains(out, "switch pane") && !strings.Contains(out, "Switch pane") {
+		t.Errorf("help content missing review Tab/switch-pane key:\n%s", out)
+	}
+}
