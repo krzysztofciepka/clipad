@@ -1,7 +1,9 @@
 package main
 
 import (
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -55,4 +57,45 @@ func pluginReviewView(left, right viewport.Model, focus reviewFocus, width, heig
 		reviewHeader + "\n" + right.View())
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+}
+
+func (m model) handlePluginReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		if m.reviewFocus == reviewFocusReview {
+			m.reviewFocus = reviewFocusNote
+		} else {
+			m.reviewFocus = reviewFocusReview
+		}
+		return m, nil
+	case "up", "k":
+		if m.reviewFocus == reviewFocusNote {
+			m.pluginDiffViewL.LineUp(1)
+		} else {
+			m.pluginDiffViewR.LineUp(1)
+		}
+		return m, nil
+	case "down", "j":
+		if m.reviewFocus == reviewFocusNote {
+			m.pluginDiffViewL.LineDown(1)
+		} else {
+			m.pluginDiffViewR.LineDown(1)
+		}
+		return m, nil
+	case "c":
+		_ = clipboard.WriteAll(m.pluginDiffResult)
+		m.errMsg = "Review copied"
+		return m, nil
+	case "esc", "q":
+		m.closePluginRun("")
+		return m, nil
+	case "ctrl+q":
+		if m.isDirty() {
+			m.inputMode = inputUnsavedGuard
+			m.pendingAction = pendingQuit
+			return m, nil
+		}
+		return m, tea.Quit
+	}
+	return m, nil
 }

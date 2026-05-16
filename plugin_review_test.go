@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -94,4 +96,129 @@ func TestShortcutSelect_InferredReview_EntersReviewMode(t *testing.T) {
 	}
 }
 
-var _ = tea.KeyMsg{}
+func reviewModel(t *testing.T) model {
+	t.Helper()
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("the untouched note")
+	m.pluginDiffOriginal = "the untouched note"
+	m.pluginDiffResult = "line one\nline two\nline three\nline four\nline five"
+	m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
+		m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
+	m.inputMode = inputPluginReview
+	m.reviewFocus = reviewFocusReview
+	m.pluginActive = &fakePlugin{name: "fake"}
+	return m
+}
+
+func TestHandlePluginReview_TabTogglesFocus(t *testing.T) {
+	m := reviewModel(t)
+	next, _ := m.handlePluginReview(tea.KeyMsg{Type: tea.KeyTab})
+	nm := next.(model)
+	if nm.reviewFocus != reviewFocusNote {
+		t.Fatalf("after Tab: reviewFocus = %v, want reviewFocusNote", nm.reviewFocus)
+	}
+	next2, _ := nm.handlePluginReview(tea.KeyMsg{Type: tea.KeyTab})
+	if next2.(model).reviewFocus != reviewFocusReview {
+		t.Errorf("after second Tab: want reviewFocusReview")
+	}
+}
+
+func TestHandlePluginReview_EscClosesWithoutChangingNote(t *testing.T) {
+	m := reviewModel(t)
+	before := m.editor.Value()
+	next, _ := m.handlePluginReview(pressEsc())
+	nm := next.(model)
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if nm.editor.Value() != before {
+		t.Errorf("editor value changed: got %q, want %q", nm.editor.Value(), before)
+	}
+	if nm.pluginDiffResult != "" || nm.pluginActive != nil {
+		t.Errorf("plugin state not cleared on close")
+	}
+}
+
+func TestHandlePluginReview_QClosesWithoutChangingNote(t *testing.T) {
+	m := reviewModel(t)
+	before := m.editor.Value()
+	next, _ := m.handlePluginReview(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	nm := next.(model)
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if nm.editor.Value() != before {
+		t.Errorf("editor value changed on q-close")
+	}
+}
+
+func TestHandlePluginReview_CopyWritesClipboard(t *testing.T) {
+	m := reviewModel(t)
+	next, _ := m.handlePluginReview(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	nm := next.(model)
+	got, err := clipboardReadAllForTest()
+	if err != nil {
+		t.Skipf("clipboard unavailable in this environment: %v", err)
+	}
+	if got != m.pluginDiffResult {
+		t.Errorf("clipboard = %q, want %q", got, m.pluginDiffResult)
+	}
+	if nm.inputMode != inputPluginReview {
+		t.Errorf("copy should not close review; inputMode = %v", nm.inputMode)
+	}
+}
+
+func TestHandlePluginReview_ScrollFocusedPane(t *testing.T) {
+	m := reviewModel(t)
+	// Force tiny viewport so content is scrollable.
+	m.pluginDiffViewR = viewport.New(20, 1)
+	m.pluginDiffViewR.SetContent("a\nb\nc\nd\ne")
+	startOffset := m.pluginDiffViewR.YOffset
+	next, _ := m.handlePluginReview(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	nm := next.(model)
+	if nm.pluginDiffViewR.YOffset <= startOffset {
+		t.Errorf("review pane did not scroll down: offset %d -> %d", startOffset, nm.pluginDiffViewR.YOffset)
+	}
+}
+
+func TestPluginDoneMsg_ReviewEmpty_Closes(t *testing.T) {
+	m := reviewModel(t)
+	m.pluginDiffResult = ""
+	ch := make(chan string)
+	close(ch)
+	m.activeChunks = ch
+	next, _ := m.Update(pluginDoneMsg{chunks: ch})
+	nm := next.(model)
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	if nm.errMsg != "No review generated" {
+		t.Errorf("errMsg = %q, want %q", nm.errMsg, "No review generated")
+	}
+	if nm.pluginActive != nil || nm.pluginDiffOriginal != "" || nm.pluginDiffResult != "" {
+		t.Errorf("plugin state not cleared after empty review done")
+	}
+}
+
+func TestPluginDoneMsg_ReviewNonEmpty_DoesNotClose(t *testing.T) {
+	m := reviewModel(t)
+	// pluginDiffResult equals pluginDiffOriginal — in diff mode this would
+	// trigger "No changes" dismissal, but review mode must NOT dismiss.
+	m.pluginDiffResult = m.pluginDiffOriginal
+	ch := make(chan string)
+	close(ch)
+	m.activeChunks = ch
+	next, _ := m.Update(pluginDoneMsg{chunks: ch})
+	nm := next.(model)
+	if nm.inputMode != inputPluginReview {
+		t.Errorf("inputMode = %v, want inputPluginReview (review must not be auto-closed)", nm.inputMode)
+	}
+	if nm.pluginDiffResult != m.pluginDiffOriginal {
+		t.Errorf("pluginDiffResult was cleared; want it preserved")
+	}
+}
+
+func clipboardReadAllForTest() (string, error) {
+	return clipboard.ReadAll()
+}

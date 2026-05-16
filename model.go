@@ -300,6 +300,16 @@ func (m model) isDirty() bool {
 	return m.editor.Value() != m.cleanContent
 }
 
+// closePluginRun resets the shared plugin-run state and surfaces a status
+// message. Used to dismiss diff/review modes uniformly.
+func (m *model) closePluginRun(msg string) {
+	m.errMsg = msg
+	m.inputMode = inputNone
+	m.pluginActive = nil
+	m.pluginDiffOriginal = ""
+	m.pluginDiffResult = ""
+}
+
 // aiInputContent returns the content to feed to an AI run plus a flag the
 // diff-accept path uses to decide whether to replace just the selection or
 // the whole buffer. selActive is sufficient as the "has selection" predicate
@@ -561,20 +571,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeChunks = nil
 		if m.inputMode == inputPluginReview {
 			if m.pluginDiffResult == "" {
-				m.errMsg = "No review generated"
-				m.inputMode = inputNone
-				m.pluginActive = nil
-				m.pluginDiffOriginal = ""
-				m.pluginDiffResult = ""
+				m.closePluginRun("No review generated")
 			}
 			return m, nil
 		}
 		if m.pluginDiffResult == m.pluginDiffOriginal || m.pluginDiffResult == "" {
-			m.errMsg = "No changes"
-			m.inputMode = inputNone
-			m.pluginActive = nil
-			m.pluginDiffOriginal = ""
-			m.pluginDiffResult = ""
+			m.closePluginRun("No changes")
 		}
 		return m, nil
 
@@ -585,11 +587,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pluginProcessing = false
 		m.pluginCancel = nil
 		m.activeChunks = nil
-		m.errMsg = "Plugin error: " + msg.err.Error()
-		m.inputMode = inputNone
-		m.pluginActive = nil
-		m.pluginDiffOriginal = ""
-		m.pluginDiffResult = ""
+		m.closePluginRun("Plugin error: " + msg.err.Error())
 		return m, nil
 
 	case tea.MouseMsg:
@@ -1024,6 +1022,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePluginPrompt(msg)
 	case inputPluginDiff:
 		return m.handlePluginDiff(msg)
+	case inputPluginReview:
+		return m.handlePluginReview(msg)
 	case inputShortcutSelect:
 		return m.handleShortcutSelect(msg)
 	case inputShortcutName:
@@ -1874,7 +1874,7 @@ func (m *model) recalcLayout() {
 		}
 	}
 
-	if m.inputMode == inputPluginDiff {
+	if m.inputMode == inputPluginDiff || m.inputMode == inputPluginReview {
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(
 			m.pluginDiffOriginal, m.pluginDiffResult, m.editorWidth, m.editorHeight)
 	}
@@ -1927,6 +1927,8 @@ func (m model) View() string {
 		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.activeShortcutProvider, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginDiff {
 		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
+	} else if m.inputMode == inputPluginReview {
+		rightView = pluginReviewView(m.pluginDiffViewL, m.pluginDiffViewR, m.reviewFocus, m.editorWidth, m.editorHeight)
 	} else if m.currentFile == "" && m.newNoteDir == "" {
 		placeholder := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
@@ -2031,6 +2033,9 @@ func (m model) View() string {
 	} else if m.inputMode == inputPluginDiff {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Accept changes? (y/n)")
+	} else if m.inputMode == inputPluginReview {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Review — Tab:switch pane  c:copy  Esc:close")
 	} else if m.inputMode == inputNewFolder {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"New folder: " + m.newFolderInput.View())
