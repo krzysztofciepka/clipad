@@ -52,11 +52,19 @@ func TestShortcutFlow_Create_GoesThroughDescriptionStep(t *testing.T) {
 	nm3.shortcutPromptInput.SetValue("do the thing")
 	next4, _ := nm3.handleShortcutPrompt(pressEnter())
 	nm4 := next4.(model)
-	if nm4.inputMode != inputNone {
-		t.Errorf("after prompt: inputMode = %v, want inputNone", nm4.inputMode)
+	if nm4.inputMode != inputShortcutType {
+		t.Fatalf("after prompt: inputMode = %v, want inputShortcutType", nm4.inputMode)
+	}
+	if nm4.shortcutTempPrompt != "do the thing" {
+		t.Errorf("shortcutTempPrompt = %q, want %q", nm4.shortcutTempPrompt, "do the thing")
+	}
+	next5, _ := nm4.handleShortcutType(pressEnter())
+	nm5 := next5.(model)
+	if nm5.inputMode != inputNone {
+		t.Fatalf("after type: inputMode = %v, want inputNone", nm5.inputMode)
 	}
 	found := false
-	for _, s := range nm4.shortcuts {
+	for _, s := range nm5.shortcuts {
 		if s.Name == "mytest" {
 			found = true
 			if s.Description != "short desc" {
@@ -199,5 +207,104 @@ func TestShortcutSelector_CtrlDown_AtBottom_NoOp(t *testing.T) {
 	}
 	if nm.shortcutCursor != 1 {
 		t.Errorf("cursor = %d, want 1", nm.shortcutCursor)
+	}
+}
+
+func TestShortcutFlow_Create_ReachesTypeStepAndPersistsType(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = nil // start clean; newModel seeds defaults from XDG temp dir
+	m.shortcutEditing = -1
+	m.inputMode = inputShortcutName
+	m.shortcutNameInput.SetValue("mytest")
+
+	n1, _ := m.handleShortcutName(pressEnter())
+	m1 := n1.(model)
+	m1.shortcutDescriptionInput.SetValue("desc")
+	n2, _ := m1.handleShortcutDescription(pressEnter())
+	m2 := n2.(model)
+	m2.shortcutPromptInput.SetValue("do it")
+	n3, _ := m2.handleShortcutPrompt(pressEnter())
+	m3 := n3.(model)
+
+	if m3.inputMode != inputShortcutType {
+		t.Fatalf("after prompt: inputMode = %v, want inputShortcutType", m3.inputMode)
+	}
+
+	// Move selection to "review" and confirm.
+	n4, _ := m3.handleShortcutType(tea.KeyMsg{Type: tea.KeyDown})
+	m4 := n4.(model)
+	n5, _ := m4.handleShortcutType(pressEnter())
+	m5 := n5.(model)
+
+	if m5.inputMode != inputNone {
+		t.Fatalf("after type confirm: inputMode = %v, want inputNone", m5.inputMode)
+	}
+	if len(m5.shortcuts) != 1 {
+		t.Fatalf("expected 1 saved shortcut, got %d", len(m5.shortcuts))
+	}
+	if m5.shortcuts[0].Type != "review" {
+		t.Errorf("saved Type = %q, want review", m5.shortcuts[0].Type)
+	}
+	if m5.shortcuts[0].Name != "mytest" || m5.shortcuts[0].Prompt != "do it" {
+		t.Errorf("saved shortcut fields wrong: %+v", m5.shortcuts[0])
+	}
+}
+
+func TestShortcutFlow_Edit_PreselectsResolvedType(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "critique", Description: "d", Prompt: "p"}} // no Type -> infers review
+	m.shortcutCursor = 0
+	m.shortcutEditing = 0
+	m.shortcutTempName = "critique"
+	m.shortcutTempDescription = "d"
+	m.inputMode = inputShortcutPrompt
+	m.shortcutPromptInput.SetValue("p")
+
+	n, _ := m.handleShortcutPrompt(pressEnter())
+	nm := n.(model)
+	if nm.inputMode != inputShortcutType {
+		t.Fatalf("inputMode = %v, want inputShortcutType", nm.inputMode)
+	}
+	if nm.shortcutTypeCursor != shortcutTypeIndex("review") {
+		t.Errorf("type cursor = %d, want review index for an inferred-review shortcut", nm.shortcutTypeCursor)
+	}
+}
+
+func TestShortcutFlow_Type_EscCancels(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = nil // start clean; newModel seeds defaults from XDG temp dir
+	m.shortcutEditing = -1
+	m.inputMode = inputShortcutType
+	m.shortcutTempName = "x"
+	m.shortcutTempDescription = "y"
+	m.shortcutTempPrompt = "z"
+	n, _ := m.handleShortcutType(pressEsc())
+	nm := n.(model)
+	if nm.inputMode != inputNone {
+		t.Errorf("Esc should cancel to inputNone, got %v", nm.inputMode)
+	}
+	if len(nm.shortcuts) != 0 {
+		t.Errorf("Esc must not save; got %d shortcuts", len(nm.shortcuts))
+	}
+}
+
+func TestShortcutFlow_Type_JumpSelectKeys(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = nil
+	m.shortcutEditing = -1
+	m.inputMode = inputShortcutType
+
+	n1, _ := m.handleShortcutType(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m1 := n1.(model)
+	if m1.shortcutTypeCursor != shortcutTypeIndex("review") {
+		t.Errorf("after 'v': shortcutTypeCursor = %d, want review index (%d)",
+			m1.shortcutTypeCursor, shortcutTypeIndex("review"))
+	}
+
+	n2, _ := m1.handleShortcutType(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m2 := n2.(model)
+	if m2.shortcutTypeCursor != shortcutTypeIndex("replace") {
+		t.Errorf("after 'r': shortcutTypeCursor = %d, want replace index (%d)",
+			m2.shortcutTypeCursor, shortcutTypeIndex("replace"))
 	}
 }

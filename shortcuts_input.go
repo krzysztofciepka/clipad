@@ -189,21 +189,14 @@ func (m model) handleShortcutPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if prompt == "" {
 			return m, nil
 		}
-		shortcut := AIShortcut{
-			Name:        m.shortcutTempName,
-			Description: m.shortcutTempDescription,
-			Prompt:      prompt,
-		}
+		m.shortcutTempPrompt = prompt
 		if m.shortcutEditing >= 0 {
-			m.shortcuts[m.shortcutEditing] = shortcut
+			m.shortcutTypeCursor = shortcutTypeIndex(resolveShortcutType(m.shortcuts[m.shortcutEditing]))
 		} else {
-			m.shortcuts = append(m.shortcuts, shortcut)
+			m.shortcutTypeCursor = shortcutTypeIndex("replace")
 		}
-		if err := saveShortcuts(m.shortcuts); err != nil {
-			m.errMsg = "Failed to save shortcuts: " + err.Error()
-		}
-		m.inputMode = inputNone
-		m.shortcutEditing = -1
+		m.inputMode = inputShortcutType
+		return m, nil
 	case "esc":
 		m.inputMode = inputNone
 		m.shortcutEditing = -1

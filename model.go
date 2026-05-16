@@ -65,6 +65,7 @@ const (
 	inputShortcutName
 	inputShortcutDescription
 	inputShortcutPrompt
+	inputShortcutType
 	inputShortcutDeleteConfirm
 	inputGitRemote
 	inputRename
@@ -148,6 +149,8 @@ type model struct {
 	shortcutEditing          int
 	shortcutTempName         string
 	shortcutTempDescription  string
+	shortcutTempPrompt       string
+	shortcutTypeCursor       int
 	aiRunOnSelection         bool
 	shortcutPending          bool // true when shortcut awaits provider config completion
 	shortcutNameInput        textinput.Model
@@ -1035,6 +1038,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleShortcutDescription(msg)
 	case inputShortcutPrompt:
 		return m.handleShortcutPrompt(msg)
+	case inputShortcutType:
+		return m.handleShortcutType(msg)
 	case inputShortcutDeleteConfirm:
 		return m.handleShortcutDeleteConfirm(msg)
 	case inputGitRemote:
@@ -1928,6 +1933,8 @@ func (m model) View() string {
 			Render(m.helpViewport.View())
 	} else if m.inputMode == inputShortcutSelect {
 		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.activeShortcutProvider, m.editorWidth, m.editorHeight)
+	} else if m.inputMode == inputShortcutType {
+		rightView = shortcutTypeSelectorView(m.shortcutTypeCursor, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginDiff {
 		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginReview {
