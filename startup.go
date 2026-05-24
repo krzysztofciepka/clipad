@@ -76,3 +76,23 @@ func resolveStartup(preview, newNote bool, pathArg, cwd, vault string) (startupA
 		return startupAction{}, fmt.Errorf("cannot access %s: %w", abs, err)
 	}
 }
+
+// prepareStartup performs the filesystem side effects implied by an action:
+// creating a missing file (and its parents) or a missing directory. It is
+// called from main() before the TUI starts so errors can exit cleanly.
+func prepareStartup(a startupAction) error {
+	switch {
+	case a.needsCreate:
+		if err := os.MkdirAll(filepath.Dir(a.path), 0o755); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(a.path, os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return err
+		}
+		return f.Close()
+	case a.needsMkdir:
+		return os.MkdirAll(a.path, 0o755)
+	}
+	return nil
+}

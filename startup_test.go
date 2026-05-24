@@ -110,3 +110,44 @@ func TestResolveStartup_NoArgs_None(t *testing.T) {
 		t.Errorf("got %+v err %v", got, err)
 	}
 }
+
+func TestPrepareStartup_CreatesFileAndParents(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "a", "b", "note.md")
+	a := startupAction{kind: startupOpenFile, path: target, needsCreate: true}
+	if err := prepareStartup(a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("file not created: %v", err)
+	}
+}
+
+func TestPrepareStartup_CreatesDir(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "newdir")
+	a := startupAction{kind: startupNewNoteInDir, path: target, needsMkdir: true}
+	if err := prepareStartup(a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil || !info.IsDir() {
+		t.Errorf("dir not created: err=%v", err)
+	}
+}
+
+func TestPrepareStartup_ExistingFile_NoOp(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "x.md")
+	if err := os.WriteFile(file, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := startupAction{kind: startupOpenFile, path: file} // no needsCreate
+	if err := prepareStartup(a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := os.ReadFile(file)
+	if string(data) != "keep" {
+		t.Errorf("file content changed: %q", data)
+	}
+}
