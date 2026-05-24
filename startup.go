@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -92,8 +91,15 @@ func (m *model) applyStartup() tea.Cmd {
 	case startupOpenFile:
 		m.openFile(m.startup.path)
 		if m.startup.preview {
-			vp := viewport.New(m.editorWidth-2, m.editorHeight)
-			vp.SetContent(wordWrap(m.editor.Value(), m.editorWidth-4))
+			// Render Markdown (same as Ctrl+P / togglePreview), not raw text.
+			vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight)
+			if err != nil {
+				// Fall back to edit mode if Markdown rendering fails.
+				m.errMsg = fmt.Sprintf("Preview failed: %v", err)
+				m.editorMode = modeEdit
+				m.activePanel = editorPanel
+				return m.editor.Focus()
+			}
 			m.preview = vp
 			m.editorMode = modePreview
 			m.editor.Blur()

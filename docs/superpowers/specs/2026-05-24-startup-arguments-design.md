@@ -127,10 +127,12 @@ not in `main()`.
 
 - `applyStartup()` sets **view state only** (all paths already exist):
   - `startupOpenFile`: `m.openFile(path)`; if `preview`, build the preview
-    viewport (sized from `editorWidth`/`editorHeight`), set
-    `editorMode = modePreview`, blur the editor, `activePanel = editorPanel`;
-    otherwise `editorMode = modeEdit`, `activePanel = editorPanel`, focus the
-    editor.
+    viewport via `newPreviewViewport` (glamour-rendered Markdown, same as
+    `Ctrl+P` / `togglePreview` — not raw text), set `editorMode = modePreview`,
+    blur the editor, `activePanel = editorPanel` (so a keystroke in preview
+    routes to `handleEditorKeys` and switches to edit); on render failure fall
+    back to edit mode. Otherwise `editorMode = modeEdit`,
+    `activePanel = editorPanel`, focus the editor.
   - `startupNewNote` / `startupNewNoteInDir`: set `m.newNoteDir = path`
     (vault root for `--new`), clear the editor, `editorMode = modeEdit`,
     `activePanel = editorPanel`, focus the editor.

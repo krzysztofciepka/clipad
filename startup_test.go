@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -212,7 +213,7 @@ func TestApplyStartup_NewNote_TreeVisible(t *testing.T) {
 func TestApplyStartup_OpenFilePreview(t *testing.T) {
 	m := newStartupTestModel(t)
 	file := filepath.Join(t.TempDir(), "note.md")
-	if err := os.WriteFile(file, []byte("preview body"), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte("# Heading\n\nbody"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	m.startup = startupAction{kind: startupOpenFile, path: file, preview: true, hideTree: true}
@@ -227,6 +228,11 @@ func TestApplyStartup_OpenFilePreview(t *testing.T) {
 	}
 	if nm.currentFile != file {
 		t.Errorf("currentFile = %q, want %q", nm.currentFile, file)
+	}
+	// The preview must be Markdown-rendered (glamour emits ANSI styling),
+	// not raw text — raw wordWrap output would never contain an escape code.
+	if !strings.Contains(nm.preview.View(), "\x1b[") {
+		t.Errorf("preview is not Markdown-rendered (no ANSI styling found)")
 	}
 }
 
