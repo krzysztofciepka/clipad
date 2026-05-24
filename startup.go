@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type startupKind int
@@ -75,6 +78,47 @@ func resolveStartup(preview, newNote bool, pathArg, cwd, vault string) (startupA
 	default:
 		return startupAction{}, fmt.Errorf("cannot access %s: %w", abs, err)
 	}
+}
+
+// applyStartup mutates the model to reflect the resolved startup action. It runs
+// once, on the first WindowSizeMsg, after recalcLayout has sized the panes. All
+// referenced paths already exist (prepareStartup ran in main). It returns a
+// command to focus the editor where appropriate.
+func (m *model) applyStartup() tea.Cmd {
+	m.treeHidden = m.startup.hideTree
+	m.recalcLayout() // re-flow now that treeHidden may have changed
+
+	switch m.startup.kind {
+	case startupOpenFile:
+		m.openFile(m.startup.path)
+		if m.startup.preview {
+			vp := viewport.New(m.editorWidth-2, m.editorHeight)
+			vp.SetContent(wordWrap(m.editor.Value(), m.editorWidth-4))
+			m.preview = vp
+			m.editorMode = modePreview
+			m.editor.Blur()
+			// Unlike previewSelectedFile (which keeps the tree focused for
+			// browsing), the editor panel must be active so keystrokes reach
+			// handleEditorKeys, where a rune in modePreview switches to edit.
+			m.activePanel = editorPanel
+			return nil
+		}
+		m.editorMode = modeEdit
+		m.activePanel = editorPanel
+		return m.editor.Focus()
+
+	case startupNewNote, startupNewNoteInDir:
+		m.newNoteDir = m.startup.path
+		m.currentFile = ""
+		m.editor.ClearHistory()
+		m.editor.SetValue("")
+		m.cleanContent = ""
+		m.errMsg = ""
+		m.editorMode = modeEdit
+		m.activePanel = editorPanel
+		return m.editor.Focus()
+	}
+	return nil
 }
 
 // prepareStartup performs the filesystem side effects implied by an action:

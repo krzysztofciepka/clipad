@@ -197,6 +197,10 @@ type model struct {
 	inboxPath     string         // raw config value; "" → default "inbox.md"
 	captureInput  textarea.Model // multi-line, Shift+Enter for newline
 	delegateInput textinput.Model
+
+	// Startup action (applied once on the first WindowSizeMsg)
+	startup     startupAction
+	startupDone bool
 }
 
 func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath string) model {
@@ -478,6 +482,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.recalcLayout()
+		if !m.startupDone && m.startup.kind != startupNone {
+			cmd := m.applyStartup()
+			m.startupDone = true
+			return m, cmd
+		}
 		return m, nil
 
 	case autoSaveTickMsg:

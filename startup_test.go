@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestResolveStartup_ExistingFile_Edit(t *testing.T) {
@@ -149,5 +151,120 @@ func TestPrepareStartup_ExistingFile_NoOp(t *testing.T) {
 	data, _ := os.ReadFile(file)
 	if string(data) != "keep" {
 		t.Errorf("file content changed: %q", data)
+	}
+}
+
+func newStartupTestModel(t *testing.T) model {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	return newModel(t.TempDir(), nil, "", "")
+}
+
+func TestApplyStartup_OpenFileEdit(t *testing.T) {
+	m := newStartupTestModel(t)
+	file := filepath.Join(t.TempDir(), "note.md")
+	if err := os.WriteFile(file, []byte("body text"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.startup = startupAction{kind: startupOpenFile, path: file, hideTree: true}
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	nm := next.(model)
+	if nm.currentFile != file {
+		t.Errorf("currentFile = %q, want %q", nm.currentFile, file)
+	}
+	if nm.editor.Value() != "body text" {
+		t.Errorf("editor content = %q, want %q", nm.editor.Value(), "body text")
+	}
+	if nm.editorMode != modeEdit {
+		t.Errorf("editorMode = %v, want modeEdit", nm.editorMode)
+	}
+	if nm.activePanel != editorPanel {
+		t.Errorf("activePanel = %v, want editorPanel", nm.activePanel)
+	}
+	if !nm.treeHidden {
+		t.Error("treeHidden should be true")
+	}
+	if !nm.startupDone {
+		t.Error("startupDone should be true")
+	}
+}
+
+func TestApplyStartup_NewNote_TreeVisible(t *testing.T) {
+	m := newStartupTestModel(t)
+	// --new resolves to startupNewNote with hideTree=false (vault root).
+	m.startup = startupAction{kind: startupNewNote, path: m.vault, hideTree: false}
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	nm := next.(model)
+	if nm.newNoteDir != m.vault {
+		t.Errorf("newNoteDir = %q, want %q", nm.newNoteDir, m.vault)
+	}
+	if nm.treeHidden {
+		t.Error("treeHidden should be false for --new")
+	}
+	if nm.treeWidth == 0 {
+		t.Error("treeWidth should be > 0 when the tree is visible")
+	}
+}
+
+func TestApplyStartup_OpenFilePreview(t *testing.T) {
+	m := newStartupTestModel(t)
+	file := filepath.Join(t.TempDir(), "note.md")
+	if err := os.WriteFile(file, []byte("preview body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.startup = startupAction{kind: startupOpenFile, path: file, preview: true, hideTree: true}
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	nm := next.(model)
+	if nm.editorMode != modePreview {
+		t.Errorf("editorMode = %v, want modePreview", nm.editorMode)
+	}
+	if nm.activePanel != editorPanel {
+		t.Errorf("activePanel = %v, want editorPanel", nm.activePanel)
+	}
+	if nm.currentFile != file {
+		t.Errorf("currentFile = %q, want %q", nm.currentFile, file)
+	}
+}
+
+func TestApplyStartup_NewNoteInDir(t *testing.T) {
+	m := newStartupTestModel(t)
+	dir := t.TempDir()
+	m.startup = startupAction{kind: startupNewNoteInDir, path: dir, hideTree: true}
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	nm := next.(model)
+	if nm.newNoteDir != dir {
+		t.Errorf("newNoteDir = %q, want %q", nm.newNoteDir, dir)
+	}
+	if nm.currentFile != "" {
+		t.Errorf("currentFile = %q, want empty", nm.currentFile)
+	}
+	if nm.editorMode != modeEdit {
+		t.Errorf("editorMode = %v, want modeEdit", nm.editorMode)
+	}
+	if nm.editor.Value() != "" {
+		t.Errorf("editor not empty: %q", nm.editor.Value())
+	}
+}
+
+func TestApplyStartup_RunsOnce(t *testing.T) {
+	m := newStartupTestModel(t)
+	file := filepath.Join(t.TempDir(), "note.md")
+	if err := os.WriteFile(file, []byte("orig"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.startup = startupAction{kind: startupOpenFile, path: file, hideTree: true}
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	nm := next.(model)
+	nm.editor.SetValue("user typed")
+	next2, _ := nm.Update(tea.WindowSizeMsg{Width: 80, Height: 25})
+	nm2 := next2.(model)
+	if nm2.editor.Value() != "user typed" {
+		t.Errorf("startup re-applied on second resize; editor = %q", nm2.editor.Value())
 	}
 }
