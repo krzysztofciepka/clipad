@@ -101,9 +101,15 @@ func main() {
 	var (
 		showVersion bool
 		doUpgrade   bool
+		previewFlag bool
+		newFlag     bool
 	)
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.BoolVar(&doUpgrade, "upgrade", false, "fetch the latest release and replace this binary")
+	flag.BoolVar(&previewFlag, "p", false, "open the given file in preview mode (tree hidden)")
+	flag.BoolVar(&previewFlag, "preview", false, "open the given file in preview mode (tree hidden)")
+	flag.BoolVar(&newFlag, "n", false, "start in new-note mode")
+	flag.BoolVar(&newFlag, "new", false, "start in new-note mode")
 	flag.Parse()
 
 	if showVersion {
@@ -144,6 +150,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	cwd, _ := os.Getwd()
+	startup, err := resolveStartup(previewFlag, newFlag, flag.Arg(0), cwd, cfg.Vault)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := prepareStartup(startup); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot prepare %s: %v\n", startup.path, err)
+		os.Exit(1)
+	}
+
 	plugins := []Plugin{
 		&BlackboxPlugin{},
 		&OpenRouterPlugin{},
@@ -161,6 +178,7 @@ func main() {
 	}()
 
 	m := newModel(cfg.Vault, plugins, cfg.AIShortcutProvider, cfg.InboxPath)
+	m.startup = startup
 	m.indexer = idx
 	if embErr != nil {
 		m.errMsg = "Embeddings disabled: " + embErr.Error()
