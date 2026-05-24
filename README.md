@@ -64,6 +64,24 @@ On first run, you'll be prompted to set your vault path (the directory where you
 |------|--------|
 | `--version` | Print the embedded version and exit |
 | `--upgrade` | Fetch the latest GitHub release, verify its sha256, and replace the current binary in place. Restart clipad afterwards. Linux/amd64 only. |
+| `-p`, `--preview` `<path>` | Open `<path>` in preview mode with the file tree hidden; typing switches to edit mode |
+| `-n`, `--new` | Start in new-note mode (same as "+ Add note"); the file tree stays visible |
+
+### Quick actions
+
+Open or create a note straight from the shell. Paths may be relative or
+absolute and can point anywhere on the filesystem.
+
+```bash
+clipad path/to/note.md      # open in edit mode, file tree hidden
+clipad -p path/to/note.md   # open in preview mode; start typing to edit
+clipad --new                # start a new note in the vault root
+clipad path/to/dir/         # start a new note in that directory
+```
+
+- A path to an existing file opens it; a path to a directory starts a new note in it.
+- A non-existing path is created — the file, plus any missing parent directories.
+- Flags must come before the path, e.g. `clipad -p note.md`.
 
 ## Keybindings
 
