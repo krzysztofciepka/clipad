@@ -52,6 +52,7 @@ var helpSections = []helpSection{
 			{"Ctrl+T", "Vault search"},
 			{"Ctrl+K", "Ask your vault (chat)"},
 			{"Alt+D", "Open today's daily note"},
+			{"Alt+T", "New note from template"},
 			{"Ctrl+?", "Show this help"},
 		},
 	},

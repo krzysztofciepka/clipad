@@ -111,6 +111,29 @@ func (m *model) targetDirFromSelection() string {
 	return dir
 }
 
+// startTemplatePicker seeds the default, loads the template list, captures the
+// target directory from the current selection, and opens the picker modal.
+func (m *model) startTemplatePicker() {
+	if err := seedDefaultTemplate(); err != nil {
+		m.errMsg = fmt.Sprintf("Template setup failed: %v", err)
+		return
+	}
+	names, err := listTemplates()
+	if err != nil {
+		m.errMsg = fmt.Sprintf("Listing templates failed: %v", err)
+		return
+	}
+	if len(names) == 0 {
+		m.errMsg = "No templates found"
+		return
+	}
+	m.templateTargetDir = m.targetDirFromSelection()
+	m.templateList = names
+	m.templateCursor = 0
+	m.templateChosen = ""
+	m.inputMode = inputTemplatePick
+}
+
 // openDailyNote opens <vault>/daily/YYYY-MM-DD.md, creating it from the daily
 // template when absent. An existing note is opened as-is (not re-rendered).
 func (m *model) openDailyNote() {

@@ -156,3 +156,100 @@ func TestUpdate_AltD_OpensDailyNote(t *testing.T) {
 		t.Errorf("after Alt+D currentFile = %q, want %q", nm.currentFile, want)
 	}
 }
+
+func seedTemplate(t *testing.T, name, body string) {
+	t.Helper()
+	dir := templatesDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTemplatePick_EnterAdvancesToName(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputTemplatePick
+	m.templateList = []string{"daily.md", "meeting.md"}
+	m.templateCursor = 1
+	next, _ := m.handleTemplatePick(pressEnter())
+	nm := next.(model)
+	if nm.inputMode != inputTemplateName {
+		t.Errorf("inputMode = %v, want inputTemplateName", nm.inputMode)
+	}
+	if nm.templateChosen != "meeting.md" {
+		t.Errorf("templateChosen = %q, want meeting.md", nm.templateChosen)
+	}
+}
+
+func TestTemplatePick_EscCancels(t *testing.T) {
+	m := newTestModel(t)
+	m.inputMode = inputTemplatePick
+	m.templateList = []string{"daily.md"}
+	next, _ := m.handleTemplatePick(pressEsc())
+	if next.(model).inputMode != inputNone {
+		t.Errorf("Esc did not cancel picker")
+	}
+}
+
+func TestTemplateName_CreatesRenderedFileAndOpens(t *testing.T) {
+	m := newTestModel(t)
+	seedTemplate(t, "note.md", "Hello {{date}}")
+	m.inputMode = inputTemplateName
+	m.templateChosen = "note.md"
+	m.templateTargetDir = m.vault
+	m.templateNameInput.SetValue("myidea")
+	next, _ := m.handleTemplateName(pressEnter())
+	nm := next.(model)
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v, want inputNone", nm.inputMode)
+	}
+	path := filepath.Join(m.vault, "myidea.md")
+	if nm.currentFile != path {
+		t.Errorf("currentFile = %q, want %q", nm.currentFile, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("file not created: %v", err)
+	}
+	today := time.Now().Format("2006-01-02")
+	if string(data) != "Hello "+today {
+		t.Errorf("rendered content = %q, want %q", data, "Hello "+today)
+	}
+}
+
+func TestTemplateName_RejectsExistingFile(t *testing.T) {
+	m := newTestModel(t)
+	seedTemplate(t, "note.md", "x")
+	existing := filepath.Join(m.vault, "dupe.md")
+	if err := os.WriteFile(existing, []byte("ORIGINAL"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.inputMode = inputTemplateName
+	m.templateChosen = "note.md"
+	m.templateTargetDir = m.vault
+	m.templateNameInput.SetValue("dupe.md")
+	next, _ := m.handleTemplateName(pressEnter())
+	nm := next.(model)
+	if nm.errMsg == "" {
+		t.Errorf("expected errMsg for existing file")
+	}
+	data, _ := os.ReadFile(existing)
+	if string(data) != "ORIGINAL" {
+		t.Errorf("existing file overwritten: %q", data)
+	}
+}
+
+func TestUpdate_AltT_OpensPicker(t *testing.T) {
+	m := newTestModel(t)
+	key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}, Alt: true}
+	next, _ := m.Update(key)
+	nm := next.(model)
+	if nm.inputMode != inputTemplatePick {
+		t.Errorf("after Alt+T inputMode = %v, want inputTemplatePick", nm.inputMode)
+	}
+	if len(nm.templateList) == 0 {
+		t.Errorf("templateList empty; expected seeded daily.md")
+	}
+}
