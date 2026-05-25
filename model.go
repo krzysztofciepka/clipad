@@ -39,6 +39,8 @@ const (
 	pendingQuit
 	pendingNewNote
 	pendingDelete
+	pendingDailyNote
+	pendingTemplatePicker
 )
 
 type deleteCounts struct {
@@ -73,6 +75,8 @@ const (
 	inputVaultSearch
 	inputCapture
 	inputDelegateName
+	inputTemplatePick
+	inputTemplateName
 )
 
 type model struct {
@@ -201,6 +205,13 @@ type model struct {
 	// Startup action (applied once on the first WindowSizeMsg)
 	startup     startupAction
 	startupDone bool
+
+	// Templates (Alt+T new-from-template)
+	templateList      []string
+	templateCursor    int
+	templateChosen    string // basename of the picked template
+	templateTargetDir string // directory the new note lands in
+	templateNameInput textinput.Model
 }
 
 func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath string) model {
@@ -264,6 +275,10 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 	del.CharLimit = 200
 	del.Prompt = "Move to: "
 
+	tn := textinput.New()
+	tn.Placeholder = "filename (no .md needed)"
+	tn.CharLimit = 200
+
 	m := model{
 		vault:                    vault,
 		activePanel:              treePanel,
@@ -286,6 +301,7 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 		chatInput:                ci,
 		captureInput:             cap,
 		delegateInput:            del,
+		templateNameInput:        tn,
 		inboxPath:                inboxPath,
 	}
 
@@ -842,6 +858,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.delegateInput.Focus()
 			return m, cmd
 
+		case "alt+d":
+			if m.vault == "" {
+				m.errMsg = "no vault configured"
+				return m, nil
+			}
+			if m.isDirty() {
+				m.inputMode = inputUnsavedGuard
+				m.pendingAction = pendingDailyNote
+				return m, nil
+			}
+			m.openDailyNote()
+			return m, nil
+
+		case "alt+t":
+			if m.vault == "" {
+				m.errMsg = "no vault configured"
+				return m, nil
+			}
+			if m.isDirty() {
+				m.inputMode = inputUnsavedGuard
+				m.pendingAction = pendingTemplatePicker
+				return m, nil
+			}
+			m.startTemplatePicker()
+			return m, nil
+
 		case "tab":
 			if m.activePanel == treePanel {
 				m.activePanel = editorPanel
@@ -1068,6 +1110,10 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleCapture(msg)
 	case inputDelegateName:
 		return m.handleDelegate(msg)
+	case inputTemplatePick:
+		return m.handleTemplatePick(msg)
+	case inputTemplateName:
+		return m.handleTemplateName(msg)
 	}
 	return m, nil
 }
@@ -1542,6 +1588,12 @@ func (m model) executePendingAction() (tea.Model, tea.Cmd) {
 		m.pendingAction = pendingNone
 		m.pendingDeletePath = ""
 		return m.beginDeleteConfirm(path)
+	case pendingDailyNote:
+		m.pendingAction = pendingNone
+		m.openDailyNote()
+	case pendingTemplatePicker:
+		m.pendingAction = pendingNone
+		m.startTemplatePicker()
 	}
 	return m, nil
 }
@@ -1953,6 +2005,8 @@ func (m model) View() string {
 		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.activeShortcutProvider, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputShortcutType {
 		rightView = shortcutTypeSelectorView(m.shortcutTypeCursor, m.editorWidth, m.editorHeight)
+	} else if m.inputMode == inputTemplatePick {
+		rightView = templatePickerView(m.templateList, m.templateCursor, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginDiff {
 		rightView = pluginDiffView(m.pluginDiffViewL, m.pluginDiffViewR, m.paneFocus, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputPluginReview {
@@ -2081,6 +2135,9 @@ func (m model) View() string {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Move to " + filepath.Dir(m.currentFile) + string(filepath.Separator) +
 				m.delegateInput.View())
+	} else if m.inputMode == inputTemplateName {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"New from " + m.templateChosen + ": " + m.templateNameInput.View())
 	} else if m.inputMode == inputReplaceSearch {
 		term := m.replaceSearchInput.Value()
 		countInfo := ""
