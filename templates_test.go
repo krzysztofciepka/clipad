@@ -256,3 +256,63 @@ func TestUpdate_AltT_OpensPicker(t *testing.T) {
 		t.Errorf("templateList empty; expected seeded daily.md")
 	}
 }
+
+func TestAltD_DirtyDetoursToUnsavedGuard(t *testing.T) {
+	m := newTestModel(t)
+	m.editor.SetValue("unsaved edits") // cleanContent is "" → dirty
+	key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}, Alt: true}
+	next, _ := m.Update(key)
+	nm := next.(model)
+	if nm.inputMode != inputUnsavedGuard {
+		t.Errorf("inputMode = %v, want inputUnsavedGuard", nm.inputMode)
+	}
+	if nm.pendingAction != pendingDailyNote {
+		t.Errorf("pendingAction = %v, want pendingDailyNote", nm.pendingAction)
+	}
+	today := time.Now().Format("2006-01-02")
+	if _, err := os.Stat(filepath.Join(nm.vault, "daily", today+".md")); err == nil {
+		t.Errorf("daily note was created despite unsaved guard")
+	}
+}
+
+func TestAltT_DirtyDetoursToUnsavedGuard(t *testing.T) {
+	m := newTestModel(t)
+	m.editor.SetValue("unsaved edits")
+	key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}, Alt: true}
+	next, _ := m.Update(key)
+	nm := next.(model)
+	if nm.inputMode != inputUnsavedGuard {
+		t.Errorf("inputMode = %v, want inputUnsavedGuard", nm.inputMode)
+	}
+	if nm.pendingAction != pendingTemplatePicker {
+		t.Errorf("pendingAction = %v, want pendingTemplatePicker", nm.pendingAction)
+	}
+}
+
+func TestExecutePending_DailyNoteResumes(t *testing.T) {
+	m := newTestModel(t)
+	m.pendingAction = pendingDailyNote
+	next, _ := m.executePendingAction()
+	nm := next.(model)
+	today := time.Now().Format("2006-01-02")
+	want := filepath.Join(nm.vault, "daily", today+".md")
+	if nm.currentFile != want {
+		t.Errorf("currentFile = %q, want %q", nm.currentFile, want)
+	}
+	if nm.pendingAction != pendingNone {
+		t.Errorf("pendingAction = %v, want pendingNone", nm.pendingAction)
+	}
+}
+
+func TestExecutePending_TemplatePickerResumes(t *testing.T) {
+	m := newTestModel(t)
+	m.pendingAction = pendingTemplatePicker
+	next, _ := m.executePendingAction()
+	nm := next.(model)
+	if nm.inputMode != inputTemplatePick {
+		t.Errorf("inputMode = %v, want inputTemplatePick", nm.inputMode)
+	}
+	if nm.pendingAction != pendingNone {
+		t.Errorf("pendingAction = %v, want pendingNone", nm.pendingAction)
+	}
+}

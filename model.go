@@ -39,6 +39,8 @@ const (
 	pendingQuit
 	pendingNewNote
 	pendingDelete
+	pendingDailyNote
+	pendingTemplatePicker
 )
 
 type deleteCounts struct {
@@ -861,12 +863,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.errMsg = "no vault configured"
 				return m, nil
 			}
+			if m.isDirty() {
+				m.inputMode = inputUnsavedGuard
+				m.pendingAction = pendingDailyNote
+				return m, nil
+			}
 			m.openDailyNote()
 			return m, nil
 
 		case "alt+t":
 			if m.vault == "" {
 				m.errMsg = "no vault configured"
+				return m, nil
+			}
+			if m.isDirty() {
+				m.inputMode = inputUnsavedGuard
+				m.pendingAction = pendingTemplatePicker
 				return m, nil
 			}
 			m.startTemplatePicker()
@@ -1576,6 +1588,12 @@ func (m model) executePendingAction() (tea.Model, tea.Cmd) {
 		m.pendingAction = pendingNone
 		m.pendingDeletePath = ""
 		return m.beginDeleteConfirm(path)
+	case pendingDailyNote:
+		m.pendingAction = pendingNone
+		m.openDailyNote()
+	case pendingTemplatePicker:
+		m.pendingAction = pendingNone
+		m.startTemplatePicker()
 	}
 	return m, nil
 }
