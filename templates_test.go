@@ -235,6 +235,9 @@ func TestTemplateName_RejectsExistingFile(t *testing.T) {
 	if nm.errMsg == "" {
 		t.Errorf("expected errMsg for existing file")
 	}
+	if nm.inputMode != inputTemplateName {
+		t.Errorf("inputMode = %v after rejection, want inputTemplateName (user must be able to retry)", nm.inputMode)
+	}
 	data, _ := os.ReadFile(existing)
 	if string(data) != "ORIGINAL" {
 		t.Errorf("existing file overwritten: %q", data)
