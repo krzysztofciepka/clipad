@@ -95,3 +95,56 @@ func listTemplates() ([]string, error) {
 	sort.Strings(names)
 	return names, nil
 }
+
+// targetDirFromSelection returns the directory a new note should land in based
+// on the current tree selection: the selected folder, the parent of a selected
+// file, or the vault root.
+func (m *model) targetDirFromSelection() string {
+	dir := m.vault
+	if node := m.tree.selectedNode(); node != nil {
+		if node.IsDir {
+			dir = node.Path
+		} else {
+			dir = filepath.Dir(node.Path)
+		}
+	}
+	return dir
+}
+
+// openDailyNote opens <vault>/daily/YYYY-MM-DD.md, creating it from the daily
+// template when absent. An existing note is opened as-is (not re-rendered).
+func (m *model) openDailyNote() {
+	if err := seedDefaultTemplate(); err != nil {
+		m.errMsg = "Template setup failed: " + err.Error()
+		return
+	}
+	now := time.Now()
+	dailyDir := filepath.Join(m.vault, "daily")
+	path := filepath.Join(dailyDir, now.Format("2006-01-02")+".md")
+
+	if _, err := os.Stat(path); err == nil {
+		m.openFile(path)
+		m.activePanel = editorPanel
+		m.editor.Focus()
+		return
+	}
+
+	tmpl, err := os.ReadFile(filepath.Join(templatesDir(), "daily.md"))
+	if err != nil {
+		m.errMsg = "Read template failed: " + err.Error()
+		return
+	}
+	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
+		m.errMsg = fmt.Sprintf("Create dir failed: %v", err)
+		return
+	}
+	rendered := renderTemplate(string(tmpl), now, m.vault)
+	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+		m.errMsg = fmt.Sprintf("Save failed: %v", err)
+		return
+	}
+	m.openFile(path)
+	m.activePanel = editorPanel
+	m.editor.Focus()
+	m.refreshTree()
+}

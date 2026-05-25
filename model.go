@@ -842,6 +842,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.delegateInput.Focus()
 			return m, cmd
 
+		case "alt+d":
+			if m.vault == "" {
+				m.errMsg = "no vault configured"
+				return m, nil
+			}
+			m.openDailyNote()
+			return m, nil
+
 		case "tab":
 			if m.activePanel == treePanel {
 				m.activePanel = editorPanel

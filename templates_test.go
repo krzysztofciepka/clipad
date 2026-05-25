@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestRenderTemplate_Variables(t *testing.T) {
@@ -100,5 +102,57 @@ func TestRenderTemplate_EmptyLayoutFallsBackToDefault(t *testing.T) {
 	now := time.Date(2026, 5, 25, 14, 30, 0, 0, time.UTC)
 	if got := renderTemplate("{{date:}}", now, "/v"); got != "2026-05-25" {
 		t.Errorf("renderTemplate({{date:}}) = %q, want 2026-05-25", got)
+	}
+}
+
+func TestOpenDailyNote_CreatesFromTemplate(t *testing.T) {
+	m := newTestModel(t)
+	m.openDailyNote()
+	if m.errMsg != "" {
+		t.Fatalf("unexpected errMsg: %s", m.errMsg)
+	}
+	today := time.Now().Format("2006-01-02")
+	want := filepath.Join(m.vault, "daily", today+".md")
+	if m.currentFile != want {
+		t.Errorf("currentFile = %q, want %q", m.currentFile, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("daily note not created: %v", err)
+	}
+	body := m.editor.Value()
+	if strings.Contains(body, "{{date") || strings.Contains(body, "{{yesterday") {
+		t.Errorf("template not rendered:\n%s", body)
+	}
+	if !strings.Contains(body, today[:4]) { // year present somewhere
+		t.Errorf("rendered body missing date:\n%s", body)
+	}
+}
+
+func TestOpenDailyNote_OpensExistingWithoutRerender(t *testing.T) {
+	m := newTestModel(t)
+	today := time.Now().Format("2006-01-02")
+	dir := filepath.Join(m.vault, "daily")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, today+".md")
+	if err := os.WriteFile(path, []byte("EXISTING {{date}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.openDailyNote()
+	if m.editor.Value() != "EXISTING {{date}}" {
+		t.Errorf("existing note was modified: %q", m.editor.Value())
+	}
+}
+
+func TestUpdate_AltD_OpensDailyNote(t *testing.T) {
+	m := newTestModel(t)
+	key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}, Alt: true}
+	next, _ := m.Update(key)
+	nm := next.(model)
+	today := time.Now().Format("2006-01-02")
+	want := filepath.Join(nm.vault, "daily", today+".md")
+	if nm.currentFile != want {
+		t.Errorf("after Alt+D currentFile = %q, want %q", nm.currentFile, want)
 	}
 }

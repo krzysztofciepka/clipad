@@ -51,6 +51,7 @@ var helpSections = []helpSection{
 			{"Ctrl+L", "Create AI shortcut"},
 			{"Ctrl+T", "Vault search"},
 			{"Ctrl+K", "Ask your vault (chat)"},
+			{"Alt+D", "Open today's daily note"},
 			{"Ctrl+?", "Show this help"},
 		},
 	},
