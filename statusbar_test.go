@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -71,6 +72,41 @@ func TestMetricTokensSelectionBeatsPreview(t *testing.T) {
 	want := []string{"2 words", "11 chars"}
 	if !reflect.DeepEqual(tokens, want) {
 		t.Errorf("tokens = %v, want %v", tokens, want)
+	}
+}
+
+func TestViewShowsEditMetrics(t *testing.T) {
+	sb := StatusBar{width: 120, editorFocused: true, filename: "note.md", bufferText: "one two three"}
+	out := sb.View()
+	if !strings.Contains(out, "3 words") {
+		t.Errorf("View() = %q, want it to contain %q", out, "3 words")
+	}
+	if !strings.Contains(out, "13 chars") {
+		t.Errorf("View() = %q, want it to contain %q", out, "13 chars")
+	}
+}
+
+func TestViewShowsPreviewReadTime(t *testing.T) {
+	sb := StatusBar{width: 120, editorFocused: true, previewMode: true, filename: "note.md", bufferText: "one two three"}
+	out := sb.View()
+	if !strings.Contains(out, "~1m read") {
+		t.Errorf("View() = %q, want it to contain %q", out, "~1m read")
+	}
+}
+
+func TestViewShowsSelectionMetrics(t *testing.T) {
+	sb := StatusBar{width: 120, editorFocused: true, selectionActive: true, filename: "note.md", selectionText: "alpha beta"}
+	out := sb.View()
+	if !strings.Contains(out, "sel: 2 words") {
+		t.Errorf("View() = %q, want it to contain %q", out, "sel: 2 words")
+	}
+}
+
+func TestViewHidesMetricsWhenTreeFocused(t *testing.T) {
+	sb := StatusBar{width: 120, editorFocused: false, treeActive: true, filename: "note.md", bufferText: "one two three"}
+	out := sb.View()
+	if strings.Contains(out, "words") {
+		t.Errorf("View() = %q, should not contain metrics when editor unfocused", out)
 	}
 }
 
