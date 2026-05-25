@@ -316,3 +316,48 @@ func TestExecutePending_TemplatePickerResumes(t *testing.T) {
 		t.Errorf("pendingAction = %v, want pendingNone", nm.pendingAction)
 	}
 }
+
+func TestAltD_Dirty_DiscardThenOpensDailyNote(t *testing.T) {
+	m := newTestModel(t)
+	m.editor.SetValue("unsaved edits")
+	altD := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}, Alt: true}
+	next, _ := m.Update(altD)
+	guarded := next.(model)
+	if guarded.inputMode != inputUnsavedGuard {
+		t.Fatalf("expected inputUnsavedGuard, got %v", guarded.inputMode)
+	}
+	discard := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	next2, _ := guarded.Update(discard)
+	nm := next2.(model)
+	today := time.Now().Format("2006-01-02")
+	want := filepath.Join(nm.vault, "daily", today+".md")
+	if nm.currentFile != want {
+		t.Errorf("after discard: currentFile = %q, want %q", nm.currentFile, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("daily note not created after discard: %v", err)
+	}
+	if nm.inputMode != inputNone {
+		t.Errorf("inputMode = %v after roundtrip, want inputNone", nm.inputMode)
+	}
+}
+
+func TestAltT_Dirty_DiscardThenOpensPicker(t *testing.T) {
+	m := newTestModel(t)
+	m.editor.SetValue("unsaved edits")
+	altT := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}, Alt: true}
+	next, _ := m.Update(altT)
+	guarded := next.(model)
+	if guarded.inputMode != inputUnsavedGuard {
+		t.Fatalf("expected inputUnsavedGuard, got %v", guarded.inputMode)
+	}
+	discard := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	next2, _ := guarded.Update(discard)
+	nm := next2.(model)
+	if nm.inputMode != inputTemplatePick {
+		t.Errorf("after discard: inputMode = %v, want inputTemplatePick", nm.inputMode)
+	}
+	if len(nm.templateList) == 0 {
+		t.Errorf("templateList empty after discard; expected seeded daily.md")
+	}
+}
