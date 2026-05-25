@@ -2022,15 +2022,22 @@ func (m model) View() string {
 	}
 
 	sb := StatusBar{
-		width:         m.width,
-		treeActive:    m.activePanel == treePanel,
-		filename:      filename,
-		line:          line + 1,
-		col:           col + 1,
-		dirty:         m.isDirty(),
-		errMsg:        m.errMsg,
-		fileOpen:      m.currentFile != "" || m.newNoteDir != "",
-		indexerStatus: m.indexerStatus,
+		width:           m.width,
+		treeActive:      m.activePanel == treePanel,
+		filename:        filename,
+		line:            line + 1,
+		col:             col + 1,
+		dirty:           m.isDirty(),
+		errMsg:          m.errMsg,
+		fileOpen:        m.currentFile != "" || m.newNoteDir != "",
+		indexerStatus:   m.indexerStatus,
+		editorFocused:   m.activePanel == editorPanel,
+		previewMode:     m.editorMode == modePreview,
+		selectionActive: m.editor.selActive,
+		bufferText:      m.editor.Value(),
+	}
+	if m.editor.selActive {
+		sb.selectionText = m.editor.SelectedText()
 	}
 	if m.autoSaveFlash {
 		sb.flashMsg = "Auto-saved"
