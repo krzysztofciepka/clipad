@@ -115,23 +115,26 @@ func (m *model) targetDirFromSelection() string {
 // template when absent. An existing note is opened as-is (not re-rendered).
 func (m *model) openDailyNote() {
 	if err := seedDefaultTemplate(); err != nil {
-		m.errMsg = "Template setup failed: " + err.Error()
+		m.errMsg = fmt.Sprintf("Template setup failed: %v", err)
 		return
 	}
 	now := time.Now()
 	dailyDir := filepath.Join(m.vault, "daily")
 	path := filepath.Join(dailyDir, now.Format("2006-01-02")+".md")
 
-	if _, err := os.Stat(path); err == nil {
+	if _, statErr := os.Stat(path); statErr == nil {
 		m.openFile(path)
 		m.activePanel = editorPanel
 		m.editor.Focus()
+		return
+	} else if !os.IsNotExist(statErr) {
+		m.errMsg = fmt.Sprintf("Open failed: %v", statErr)
 		return
 	}
 
 	tmpl, err := os.ReadFile(filepath.Join(templatesDir(), "daily.md"))
 	if err != nil {
-		m.errMsg = "Read template failed: " + err.Error()
+		m.errMsg = fmt.Sprintf("Read template failed: %v", err)
 		return
 	}
 	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
