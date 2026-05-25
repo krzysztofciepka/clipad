@@ -60,3 +60,35 @@ func TestSeedDefaultTemplate_DoesNotOverwrite(t *testing.T) {
 		t.Errorf("seed overwrote existing template: got %q", data)
 	}
 }
+
+func TestListTemplates_SortsAndFiltersMd(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := templatesDir()
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"zzz.md", "daily.md", "note.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := listTemplates()
+	if err != nil {
+		t.Fatalf("listTemplates: %v", err)
+	}
+	want := []string{"daily.md", "zzz.md"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("listTemplates = %v, want %v", got, want)
+	}
+}
+
+func TestListTemplates_MissingDirReturnsEmpty(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	got, err := listTemplates()
+	if err != nil {
+		t.Fatalf("listTemplates: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("listTemplates on missing dir = %v, want empty", got)
+	}
+}

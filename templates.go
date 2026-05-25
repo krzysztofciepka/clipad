@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -68,4 +70,25 @@ func renderTemplate(content string, now time.Time, vault string) string {
 		}
 		return match
 	})
+}
+
+// listTemplates returns the sorted *.md basenames in templatesDir. A missing
+// directory yields an empty slice, not an error.
+func listTemplates() ([]string, error) {
+	entries, err := os.ReadDir(templatesDir())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading templates dir: %w", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	return names, nil
 }
