@@ -55,7 +55,10 @@ func TestSeedDefaultTemplate_DoesNotOverwrite(t *testing.T) {
 	if err := seedDefaultTemplate(); err != nil {
 		t.Fatalf("seedDefaultTemplate: %v", err)
 	}
-	data, _ := os.ReadFile(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading template after seed: %v", err)
+	}
 	if string(data) != "custom" {
 		t.Errorf("seed overwrote existing template: got %q", data)
 	}
@@ -90,5 +93,12 @@ func TestListTemplates_MissingDirReturnsEmpty(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("listTemplates on missing dir = %v, want empty", got)
+	}
+}
+
+func TestRenderTemplate_EmptyLayoutFallsBackToDefault(t *testing.T) {
+	now := time.Date(2026, 5, 25, 14, 30, 0, 0, time.UTC)
+	if got := renderTemplate("{{date:}}", now, "/v"); got != "2026-05-25" {
+		t.Errorf("renderTemplate({{date:}}) = %q, want 2026-05-25", got)
 	}
 }

@@ -44,15 +44,18 @@ func seedDefaultTemplate() error {
 	return nil
 }
 
-// templateVarRe matches {{name}} and {{name:layout}} for the supported
-// variable names only. Unknown placeholders never match and pass through
-// untouched. The layout cannot contain braces (Go reference layouts never do).
+// templateVarRe matches {{name}} and {{name:layout}} for the supported variable
+// names only. Unknown placeholders never match and pass through untouched. The
+// optional :layout is only honored for {{date}}; on other names it is ignored.
+// The layout cannot contain braces (Go reference layouts never do).
 var templateVarRe = regexp.MustCompile(`\{\{(date|time|yesterday|vault)(?::([^{}]*))?\}\}`)
 
 // renderTemplate substitutes template variables in content. now is injected so
 // rendering is deterministic and unit-testable.
 func renderTemplate(content string, now time.Time, vault string) string {
 	return templateVarRe.ReplaceAllStringFunc(content, func(match string) string {
+		// ReplaceAllStringFunc only passes the whole match, so re-parse it here
+		// to recover the name and optional layout capture groups.
 		sub := templateVarRe.FindStringSubmatch(match)
 		name, layout := sub[1], sub[2]
 		switch name {
