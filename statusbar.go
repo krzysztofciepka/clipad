@@ -144,7 +144,11 @@ func (s StatusBar) View() string {
 	// Sheds tokens to fit and takes priority over trailing hints (which the
 	// loop below drops to make room).
 	if prefix, tokens := s.metricTokens(); len(tokens) > 0 {
-		budget := contentWidth - lipgloss.Width(right) - 2
+		sep := 0
+		if right != "" {
+			sep = 2
+		}
+		budget := contentWidth - lipgloss.Width(right) - sep
 		if metrics := fitMetrics(prefix, tokens, budget); metrics != "" {
 			if right == "" {
 				right = metrics

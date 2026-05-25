@@ -54,6 +54,26 @@ func TestMetricTokensHiddenWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestMetricTokensSelectionWhitespaceHidden(t *testing.T) {
+	sb := StatusBar{editorFocused: true, selectionActive: true, selectionText: "   \n  "}
+	_, tokens := sb.metricTokens()
+	if tokens != nil {
+		t.Errorf("tokens = %v, want nil", tokens)
+	}
+}
+
+func TestMetricTokensSelectionBeatsPreview(t *testing.T) {
+	sb := StatusBar{editorFocused: true, previewMode: true, selectionActive: true, selectionText: "hello world"}
+	prefix, tokens := sb.metricTokens()
+	if prefix != "sel: " {
+		t.Errorf("prefix = %q, want \"sel: \"", prefix)
+	}
+	want := []string{"2 words", "11 chars"}
+	if !reflect.DeepEqual(tokens, want) {
+		t.Errorf("tokens = %v, want %v", tokens, want)
+	}
+}
+
 func TestFitMetricsDropsTokens(t *testing.T) {
 	tokens := []string{"3 words", "13 chars"} // "3 words · 13 chars" == 18 wide
 	if got := fitMetrics("", tokens, 100); got != "3 words · 13 chars" {
