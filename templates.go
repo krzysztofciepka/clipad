@@ -1,9 +1,46 @@
 package main
 
 import (
+	_ "embed"
+	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"time"
 )
+
+//go:embed defaults/daily.md
+var defaultDailyTemplate []byte
+
+// templatesDir is ~/.config/clipad/templates, honoring XDG_CONFIG_HOME,
+// mirroring shortcutsPath().
+func templatesDir() string {
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	if xdg == "" {
+		home, _ := os.UserHomeDir()
+		xdg = filepath.Join(home, ".config")
+	}
+	return filepath.Join(xdg, "clipad", "templates")
+}
+
+// seedDefaultTemplate writes the embedded daily.md into templatesDir only if it
+// is absent. Idempotent; never overwrites a user-edited template.
+func seedDefaultTemplate() error {
+	dir := templatesDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("creating templates dir: %w", err)
+	}
+	path := filepath.Join(dir, "daily.md")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("checking daily template: %w", err)
+	}
+	if err := os.WriteFile(path, defaultDailyTemplate, 0o644); err != nil {
+		return fmt.Errorf("seeding daily template: %w", err)
+	}
+	return nil
+}
 
 // templateVarRe matches {{name}} and {{name:layout}} for the supported
 // variable names only. Unknown placeholders never match and pass through
