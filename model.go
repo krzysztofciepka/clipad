@@ -1630,6 +1630,7 @@ func (m *model) openFile(path string) {
 		return
 	}
 	m.currentFile = path
+	m.editor.ClearSelection()
 	m.editor.ClearHistory()
 	m.editor.SetValue(string(data))
 	m.cleanContent = string(data)
@@ -1675,6 +1676,7 @@ func (m *model) startNewNote() {
 
 	m.newNoteDir = dir
 	m.currentFile = ""
+	m.editor.ClearSelection()
 	m.editor.ClearHistory()
 	m.editor.SetValue("")
 	m.cleanContent = ""

@@ -59,6 +59,18 @@ func posInRange(line, col, sLine, sCol, eLine, eCol int) bool {
 
 func extractText(content string, sLine, sCol, eLine, eCol int) string {
 	lines := strings.Split(content, "\n")
+	// Guard against stale selection coordinates pointing past a buffer that has
+	// since been replaced with a shorter one (e.g. starting a new note).
+	if sLine < 0 {
+		sLine, sCol = 0, 0
+	}
+	if eLine > len(lines)-1 {
+		eLine = len(lines) - 1
+		eCol = len([]rune(lines[eLine]))
+	}
+	if sLine > eLine {
+		return ""
+	}
 	if sLine == eLine {
 		runes := []rune(lines[sLine])
 		if eCol > len(runes) {

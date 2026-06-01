@@ -176,6 +176,30 @@ func TestMouseDragSelection(t *testing.T) {
 	}
 }
 
+func TestExtractTextOutOfRangeDoesNotPanic(t *testing.T) {
+	// Reproduces the panic seen when a stale multi-line selection points past
+	// the current (shorter) buffer: extractText(content, 0, 0, 8, 30) on a
+	// single-line buffer used to index lines[8] and crash.
+	got := extractText("hello", 0, 0, 8, 30)
+	if got != "hello" {
+		t.Errorf("extractText out-of-range = %q, want %q", got, "hello")
+	}
+}
+
+func TestSelectedTextAfterBufferShrink(t *testing.T) {
+	// A multi-line selection becomes stale when the buffer is replaced with a
+	// shorter one (e.g. starting a new note). SelectedText must not panic.
+	e := newSelectableEditor()
+	e.SetValue("line1\nline2\nline3\nline4\nline5")
+	setEditorSize(&e, 80, 10)
+	e.SelectAll()
+	e.SetValue("")
+	got := e.SelectedText()
+	if got != "" {
+		t.Errorf("SelectedText after shrink = %q, want empty", got)
+	}
+}
+
 func TestMouseClickWithoutDragClearsSelection(t *testing.T) {
 	e := newSelectableEditor()
 	e.SetValue("hello world")
