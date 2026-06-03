@@ -185,13 +185,13 @@ type model struct {
 	vaultSearchPending bool
 	vaultSearchToken   int64
 
-	// Chat panel (Ctrl+Shift+A)
-	chatOpen         bool
-	chatWidth        int
-	chatMode         chatModeT
-	chatTurns        []chatTurn
-	chatInput        textinput.Model
-	chatViewport     viewport.Model
+	// Agent chat panel (Ctrl+K)
+	chatOpen      bool
+	chatWidth     int
+	chatMode      chatModeT
+	chatTurns     []chatTurn
+	chatInput     textinput.Model
+	chatViewport  viewport.Model
 	chatStreaming bool
 
 	// Agent (the Ctrl+K panel runs an agentic tool-calling loop)
