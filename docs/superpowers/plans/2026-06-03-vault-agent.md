@@ -1632,7 +1632,7 @@ Then replace the `case "enter":` block inside `case chatModeInput:` (~`model.go:
 				model:   plugCfg["model"],
 				vault:   m.vault,
 				idx:     m.indexer,
-				timeout: bashTimeout * time.Second,
+				timeout: bashTimeout, // typed time.Duration (30 * time.Second)
 			}
 
 			innerW := m.chatWidth - 4
