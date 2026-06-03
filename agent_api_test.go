@@ -114,3 +114,31 @@ func TestRunAgentTurn_HTTPError(t *testing.T) {
 		t.Fatal("expected error on 401")
 	}
 }
+
+func TestRunAgentTurn_MalformedJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{not valid json`)
+	}))
+	defer server.Close()
+
+	_, err := runAgentTurn(context.Background(), server.URL, "k", "m",
+		[]agentMessage{{Role: "user", Content: "hi"}}, agentTools())
+	if err == nil {
+		t.Fatal("expected error on malformed JSON response")
+	}
+}
+
+func TestRunAgentTurn_EmptyChoices(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[]}`)
+	}))
+	defer server.Close()
+
+	_, err := runAgentTurn(context.Background(), server.URL, "k", "m",
+		[]agentMessage{{Role: "user", Content: "hi"}}, agentTools())
+	if err == nil {
+		t.Fatal("expected error when response has zero choices")
+	}
+}
