@@ -44,4 +44,21 @@ func TestAgentMessage_MarshalsToolCall(t *testing.T) {
 	if _, ok := round["tool_calls"]; !ok {
 		t.Errorf("tool_calls missing in %s", b)
 	}
+	if _, ok := round["content"]; ok {
+		t.Errorf("content should be omitted for a tool-call-only message, got %s", b)
+	}
+}
+
+func TestAgentMessage_KeepsContentForPlainMessage(t *testing.T) {
+	b, err := json.Marshal(agentMessage{Role: "user", Content: "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var round map[string]any
+	if err := json.Unmarshal(b, &round); err != nil {
+		t.Fatal(err)
+	}
+	if round["content"] != "hi" {
+		t.Errorf("content = %v, want hi", round["content"])
+	}
 }

@@ -1,10 +1,28 @@
 package main
 
+import "encoding/json"
+
 type agentMessage struct {
 	Role       string          `json:"role"`
 	Content    string          `json:"content"`
 	ToolCalls  []agentToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string          `json:"tool_call_id,omitempty"`
+}
+
+// MarshalJSON omits "content" when the message is a pure tool-call (empty
+// content with tool_calls present), matching the OpenAI spec where content is
+// optional in that case. Keeping Content as a plain string keeps construction
+// sites ergonomic; this isolates the wire-format detail.
+func (m agentMessage) MarshalJSON() ([]byte, error) {
+	if m.Content == "" && len(m.ToolCalls) > 0 {
+		return json.Marshal(struct {
+			Role       string          `json:"role"`
+			ToolCalls  []agentToolCall `json:"tool_calls,omitempty"`
+			ToolCallID string          `json:"tool_call_id,omitempty"`
+		}{Role: m.Role, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID})
+	}
+	type alias agentMessage
+	return json.Marshal(alias(m))
 }
 
 type agentToolCall struct {
