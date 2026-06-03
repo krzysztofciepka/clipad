@@ -295,8 +295,12 @@ func TestPruneOrphans_RemovesChunksForMissingFiles(t *testing.T) {
 	}
 
 	var goneCount, aliveCount int
-	idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = 'gone.md'`).Scan(&goneCount)
-	idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = 'alive.md'`).Scan(&aliveCount)
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = 'gone.md'`).Scan(&goneCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = 'alive.md'`).Scan(&aliveCount); err != nil {
+		t.Fatal(err)
+	}
 	if goneCount != 0 {
 		t.Errorf("gone.md chunks = %d, want 0", goneCount)
 	}

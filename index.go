@@ -381,12 +381,19 @@ func (idx *Index) PruneOrphans(ctx context.Context) (int, error) {
 		var p string
 		if err := rows.Scan(&p); err != nil {
 			rows.Close()
-			return 0, err
+			return 0, fmt.Errorf("scan file_path: %w", err)
 		}
 		paths = append(paths, p)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, fmt.Errorf("iterate file_paths: %w", err)
+	}
 	rows.Close()
 
+	// Only a definitive "does not exist" prunes a file. Any other stat error
+	// (permissions, I/O) is treated conservatively as "still present" so we
+	// never delete chunks for a file that may exist.
 	removed := 0
 	for _, rel := range paths {
 		if _, err := os.Stat(filepath.Join(idx.vault, rel)); os.IsNotExist(err) {
