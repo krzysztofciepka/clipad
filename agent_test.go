@@ -270,6 +270,51 @@ func TestRunAgentLoop_EmitsErrorOnHTTPFailure(t *testing.T) {
 // When the cap fires part-way through a multi-tool-call assistant turn, every
 // tool_call must still get a paired tool-result message in the persisted
 // conversation (API requires 1:1 pairing).
+func TestApplyAgentEvent_AppendsTraceAndContent(t *testing.T) {
+	turns := []chatTurn{
+		{Role: "user", Content: "rename stuff"},
+		{Role: "assistant"}, // in-flight placeholder
+	}
+	turns = applyAgentEvent(turns, agentEvent{Kind: evToolStart, Tool: "bash", Label: "mv a b"})
+	turns = applyAgentEvent(turns, agentEvent{Kind: evToolResult, Tool: "bash", Output: "exit 0\n", OK: true})
+	turns = applyAgentEvent(turns, agentEvent{Kind: evAssistantText, Text: "Renamed."})
+
+	last := turns[len(turns)-1]
+	if len(last.Trace) != 2 {
+		t.Fatalf("trace lines = %d, want 2", len(last.Trace))
+	}
+	if last.Trace[0].Kind != "cmd" || !strings.Contains(last.Trace[0].Text, "mv a b") {
+		t.Errorf("trace[0] = %+v", last.Trace[0])
+	}
+	if last.Content != "Renamed." {
+		t.Errorf("content = %q, want Renamed.", last.Content)
+	}
+}
+
+func TestApplyAgentEvent_SearchAttachesCitations(t *testing.T) {
+	turns := []chatTurn{{Role: "user", Content: "q"}, {Role: "assistant"}}
+	cites := []citation{{Path: "a.md", StartLine: 1, EndLine: 2}}
+	turns = applyAgentEvent(turns, agentEvent{Kind: evToolStart, Tool: "search_vault", Label: "taxes"})
+	turns = applyAgentEvent(turns, agentEvent{Kind: evToolResult, Tool: "search_vault", OK: true, Cites: cites})
+	last := turns[len(turns)-1]
+	if len(last.Citations) != 1 || last.Citations[0].Path != "a.md" {
+		t.Errorf("citations = %+v, want a.md", last.Citations)
+	}
+}
+
+func TestRenderChatScrollback_ShowsTrace(t *testing.T) {
+	turns := []chatTurn{
+		{Role: "assistant", Content: "ok", Trace: []traceLine{
+			{Kind: "cmd", Text: "$ ls"},
+			{Kind: "result", Text: "✓ (exit 0)", OK: true},
+		}},
+	}
+	out := renderChatScrollback(turns, 60, false)
+	if !strings.Contains(out, "$ ls") {
+		t.Errorf("scrollback missing command line: %q", out)
+	}
+}
+
 func TestRunAgentLoop_CapMidBatchKeepsToolResultsPaired(t *testing.T) {
 	vault := t.TempDir()
 	responses := make([]string, maxToolCalls+1)

@@ -21,6 +21,13 @@ type chatTurn struct {
 	Role      string // "user" | "assistant"
 	Content   string
 	Citations []citation
+	Trace     []traceLine // tool activity for assistant turns (in order)
+}
+
+type traceLine struct {
+	Kind string // "cmd" | "result" | "search"
+	Text string
+	OK   bool
 }
 
 type citation struct {
@@ -145,13 +152,22 @@ func renderChatScrollback(turns []chatTurn, width int, streaming bool) string {
 			body := wordWrap("You: "+t.Content, width)
 			b.WriteString(chatUserStyle.Render("▸ ") + body + "\n")
 		case "assistant":
+			for _, tl := range t.Trace {
+				style := chatHintStyle
+				if tl.Kind == "result" && !tl.OK {
+					style = chatUserStyle
+				}
+				b.WriteString("  " + style.Render(wordWrap(tl.Text, width-2)) + "\n")
+			}
 			content := t.Content
 			// While streaming, show a placeholder for the empty in-flight turn.
-			if content == "" && streaming && i == len(turns)-1 {
-				content = "(retrieving context and thinking…)"
+			if content == "" && len(t.Trace) == 0 && streaming && i == len(turns)-1 {
+				content = "(thinking…)"
 			}
-			body := wordWrap("clipad: "+content, width)
-			b.WriteString(chatAssistantStyle.Render(body) + "\n")
+			if content != "" {
+				body := wordWrap("clipad: "+content, width)
+				b.WriteString(chatAssistantStyle.Render(body) + "\n")
+			}
 			for j, c := range t.Citations {
 				cite := fmt.Sprintf("[%d] %s L%d-L%d", j+1, c.Path, c.StartLine, c.EndLine)
 				b.WriteString("  " + chatCitationStyle.Render(wordWrap(cite, width-2)) + "\n")

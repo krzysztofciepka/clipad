@@ -262,6 +262,58 @@ Guidelines:
 - When you finish a task, end with a short plain-text summary of what you did.`, vault)
 }
 
+// applyAgentEvent folds one UI event into the display turns, mutating the last
+// (in-flight assistant) turn. Returns the updated slice.
+func applyAgentEvent(turns []chatTurn, ev agentEvent) []chatTurn {
+	if len(turns) == 0 || turns[len(turns)-1].Role != "assistant" {
+		return turns
+	}
+	last := &turns[len(turns)-1]
+	switch ev.Kind {
+	case evToolStart:
+		if ev.Tool == "search_vault" {
+			last.Trace = append(last.Trace, traceLine{Kind: "search", Text: "🔍 search_vault: " + ev.Label, OK: true})
+		} else {
+			last.Trace = append(last.Trace, traceLine{Kind: "cmd", Text: "$ " + ev.Label})
+		}
+	case evToolResult:
+		if ev.Tool == "search_vault" {
+			last.Citations = append(last.Citations, ev.Cites...)
+			last.Trace = append(last.Trace, traceLine{Kind: "result", Text: fmt.Sprintf("  → %d result(s)", len(ev.Cites)), OK: ev.OK})
+			return turns
+		}
+		text := "✓ (exit 0)"
+		if !ev.OK {
+			text = "✗ " + firstLine(ev.Output)
+		} else if out := strings.TrimSpace(stripExitLine(ev.Output)); out != "" {
+			text = out
+		}
+		last.Trace = append(last.Trace, traceLine{Kind: "result", Text: text, OK: ev.OK})
+	case evAssistantText:
+		if last.Content == "" {
+			last.Content = ev.Text
+		} else {
+			last.Content += "\n" + ev.Text
+		}
+	}
+	return turns
+}
+
+// stripExitLine drops a leading "exit N\n" prefix produced by the bash tool.
+func stripExitLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 && strings.HasPrefix(s, "exit ") {
+		return s[i+1:]
+	}
+	return s
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
 // formatSearchResults renders hits as numbered excerpts and extracts citations.
 func formatSearchResults(results []Result) (string, []citation, bool) {
 	if len(results) == 0 {
