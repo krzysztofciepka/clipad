@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -147,5 +150,99 @@ func TestParseSlashCommand(t *testing.T) {
 		if got := parseSlashCommand(in); got != want {
 			t.Errorf("parseSlashCommand(%q) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+// scriptedServer returns canned JSON responses in sequence, one per request.
+func scriptedServer(t *testing.T, responses []string) *httptest.Server {
+	t.Helper()
+	i := 0
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if i >= len(responses) {
+			t.Errorf("unexpected request #%d", i+1)
+			fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"overflow"}}]}`)
+			return
+		}
+		fmt.Fprint(w, responses[i])
+		i++
+	}))
+}
+
+func collectEvents(events <-chan agentEvent) []agentEvent {
+	var out []agentEvent
+	for ev := range events {
+		out = append(out, ev)
+	}
+	return out
+}
+
+func TestRunAgentLoop_BashThenAnswer(t *testing.T) {
+	vault := t.TempDir()
+	server := scriptedServer(t, []string{
+		`{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"echo hi\"}"}}]}}]}`,
+		`{"choices":[{"message":{"role":"assistant","content":"Done."}}]}`,
+	})
+	defer server.Close()
+
+	deps := agentDeps{url: server.URL, apiKey: "k", model: "m", vault: vault, timeout: 5 * time.Second}
+	events := make(chan agentEvent)
+	msgs := []agentMessage{{Role: "system", Content: "sys"}, {Role: "user", Content: "say hi"}}
+	go runAgentLoop(context.Background(), deps, msgs, events)
+	evs := collectEvents(events)
+
+	var sawToolStart, sawToolResult, sawDone bool
+	var finalText string
+	for _, ev := range evs {
+		switch ev.Kind {
+		case evToolStart:
+			sawToolStart = true
+		case evToolResult:
+			sawToolResult = true
+		case evAssistantText:
+			finalText = ev.Text
+		case evDone:
+			sawDone = true
+		}
+	}
+	if !sawToolStart || !sawToolResult || !sawDone {
+		t.Errorf("missing events: start=%v result=%v done=%v", sawToolStart, sawToolResult, sawDone)
+	}
+	if finalText != "Done." {
+		t.Errorf("final text = %q, want Done.", finalText)
+	}
+}
+
+func TestRunAgentLoop_StopsAtToolCallCap(t *testing.T) {
+	vault := t.TempDir()
+	// Always returns a tool call; loop must stop at the cap rather than forever.
+	responses := make([]string, maxToolCalls+1)
+	for i := range responses {
+		responses[i] = `{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"c","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"echo x\"}"}}]}}]}`
+	}
+	server := scriptedServer(t, responses)
+	defer server.Close()
+
+	deps := agentDeps{url: server.URL, apiKey: "k", model: "m", vault: vault, timeout: 5 * time.Second}
+	events := make(chan agentEvent)
+	msgs := []agentMessage{{Role: "user", Content: "loop"}}
+	go runAgentLoop(context.Background(), deps, msgs, events)
+	evs := collectEvents(events)
+
+	calls := 0
+	sawDone := false
+	for _, ev := range evs {
+		if ev.Kind == evToolStart {
+			calls++
+		}
+		if ev.Kind == evDone {
+			sawDone = true
+		}
+	}
+	if calls > maxToolCalls {
+		t.Errorf("tool calls = %d, want <= %d", calls, maxToolCalls)
+	}
+	if !sawDone {
+		t.Errorf("loop did not terminate with evDone")
 	}
 }

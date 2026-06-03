@@ -92,6 +92,99 @@ func parseSearchArgs(argsJSON string) (string, int, error) {
 	return a.Query, a.K, nil
 }
 
+type agentEventKind int
+
+const (
+	evAssistantText agentEventKind = iota
+	evToolStart
+	evToolResult
+	evDone
+	evError
+)
+
+type agentEvent struct {
+	Kind     agentEventKind
+	Text     string         // evAssistantText
+	Tool     string         // evToolStart / evToolResult
+	Label    string         // evToolStart: the bash cmd or search query
+	Output   string         // evToolResult
+	OK       bool           // evToolResult
+	Cites    []citation     // evToolResult (search_vault)
+	Messages []agentMessage // evDone: final conversation to persist
+	Err      error          // evError
+}
+
+// runAgentLoop drives the tool-calling loop, emitting events for the UI and
+// closing the channel when finished. msgs must already include the system and
+// the new user message. The loop persists the full conversation via evDone.
+func runAgentLoop(ctx context.Context, deps agentDeps, msgs []agentMessage, events chan<- agentEvent) {
+	defer close(events)
+
+	send := func(ev agentEvent) bool {
+		select {
+		case events <- ev:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	calls := 0
+	for {
+		assistant, err := runAgentTurn(ctx, deps.url, deps.apiKey, deps.model, msgs, agentTools())
+		if err != nil {
+			send(agentEvent{Kind: evError, Err: err})
+			return
+		}
+		msgs = append(msgs, assistant)
+
+		if strings.TrimSpace(assistant.Content) != "" {
+			if !send(agentEvent{Kind: evAssistantText, Text: assistant.Content}) {
+				return
+			}
+		}
+
+		if len(assistant.ToolCalls) == 0 {
+			send(agentEvent{Kind: evDone, Messages: msgs})
+			return
+		}
+
+		for _, tc := range assistant.ToolCalls {
+			if calls >= maxToolCalls {
+				send(agentEvent{Kind: evAssistantText, Text: "(stopped: reached the tool-call limit)"})
+				send(agentEvent{Kind: evDone, Messages: msgs})
+				return
+			}
+			calls++
+
+			label := toolLabel(tc)
+			if !send(agentEvent{Kind: evToolStart, Tool: tc.Function.Name, Label: label}) {
+				return
+			}
+			out, cites, ok := dispatchTool(ctx, deps, tc.Function.Name, tc.Function.Arguments)
+			if !send(agentEvent{Kind: evToolResult, Tool: tc.Function.Name, Output: out, OK: ok, Cites: cites}) {
+				return
+			}
+			msgs = append(msgs, agentMessage{Role: "tool", ToolCallID: tc.ID, Content: out})
+		}
+	}
+}
+
+// toolLabel derives a short display label from a tool call's arguments.
+func toolLabel(tc agentToolCall) string {
+	switch tc.Function.Name {
+	case "bash":
+		if cmd, err := parseBashArgs(tc.Function.Arguments); err == nil {
+			return cmd
+		}
+	case "search_vault":
+		if q, _, err := parseSearchArgs(tc.Function.Arguments); err == nil {
+			return q
+		}
+	}
+	return tc.Function.Arguments
+}
+
 type slashCommand int
 
 const (
