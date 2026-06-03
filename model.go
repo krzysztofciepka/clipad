@@ -192,10 +192,7 @@ type model struct {
 	chatTurns        []chatTurn
 	chatInput        textinput.Model
 	chatViewport     viewport.Model
-	chatStreaming    bool
-	chatActiveChunks <-chan string
-	chatCancel       context.CancelFunc
-	chatCurrentCites []citation
+	chatStreaming bool
 
 	// Agent (the Ctrl+K panel runs an agentic tool-calling loop)
 	agentMessages []agentMessage    // full OpenAI conversation incl. system

@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -34,97 +32,6 @@ type citation struct {
 	Path      string
 	StartLine int
 	EndLine   int
-}
-
-// chatChunkMsg / chatDoneMsg / chatErrMsg mirror the plugin streaming msgs
-// but with their own identity discriminator so the two flows don't collide.
-type chatChunkMsg struct {
-	chunks <-chan string
-	errs   <-chan error
-	delta  string
-}
-type chatDoneMsg struct{ chunks <-chan string }
-type chatErrMsg struct {
-	chunks <-chan string
-	err    error
-}
-
-type chatStartedMsg struct {
-	chunks    <-chan string
-	errs      <-chan error
-	citations []citation
-}
-type chatStartFailedMsg struct{ err error }
-
-func streamChatCmd(chunks <-chan string, errs <-chan error) tea.Cmd {
-	return readNextChatChunk(chunks, errs)
-}
-
-func readNextChatChunk(chunks <-chan string, errs <-chan error) tea.Cmd {
-	return func() tea.Msg {
-		select {
-		case d, ok := <-chunks:
-			if !ok {
-				return chatDoneMsg{chunks: chunks}
-			}
-			return chatChunkMsg{chunks: chunks, errs: errs, delta: d}
-		case err := <-errs:
-			if err != nil {
-				return chatErrMsg{chunks: chunks, err: err}
-			}
-			return chatDoneMsg{chunks: chunks}
-		}
-	}
-}
-
-// chatStartCmd performs retrieval, composes the request, and starts the stream.
-// It expects turns to already include the new user turn.
-func chatStartCmd(idx *Index, turns []chatTurn, query string, providerURL, apiKey, chatModel string) tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-		var chunks []Result
-		if idx != nil {
-			rs, err := idx.Search(ctx, query, 8)
-			if err != nil {
-				return chatStartFailedMsg{err: fmt.Errorf("retrieval: %w", err)}
-			}
-			chunks = rs
-		}
-		sys, msgs, cites := composeChatRequest(turns, chunks)
-		userMsg := encodeChatHistory(msgs)
-		ch, errsCh := streamChatCompletion(ctx, providerURL, apiKey, chatModel, sys, userMsg)
-		return chatStartedMsg{chunks: ch, errs: errsCh, citations: cites}
-	}
-}
-
-// encodeChatHistory packs prior turns + current user into a single string for
-// streamChatCompletion's userMessage parameter (which only takes system + user).
-// The retrieved-chunk context lives in the system prompt.
-//
-// For a single-turn message (no prior history) the output is just the user's
-// query verbatim. For multi-turn, prior turns render as a "User: …" /
-// "Assistant: …" transcript, with the current question as the last entry.
-func encodeChatHistory(msgs []chatMessage) string {
-	if len(msgs) == 0 {
-		return ""
-	}
-	if len(msgs) == 1 && msgs[0].Role == "user" {
-		return msgs[0].Content
-	}
-	var b strings.Builder
-	for i, m := range msgs {
-		if i > 0 {
-			b.WriteString("\n\n")
-		}
-		switch m.Role {
-		case "user":
-			b.WriteString("User: ")
-		case "assistant":
-			b.WriteString("Assistant: ")
-		}
-		b.WriteString(m.Content)
-	}
-	return b.String()
 }
 
 var (
