@@ -1,10 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
+)
+
+const (
+	maxToolCalls  = 25 // hard cap on tool calls per user message
+	maxToolOutput = 4096
+	bashTimeout   = 30 // seconds; used as `bashTimeout * time.Second` in model wiring
 )
 
 var sudoRE = regexp.MustCompile(`(^|\s)sudo(\s|$)`)
@@ -48,4 +57,40 @@ func underDir(base, path string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+// runBashInVault runs `bash -c cmd` with cwd=vault, no stdin, a wall-clock
+// timeout, and combined stdout+stderr truncated to maxToolOutput bytes.
+// Returns the (possibly truncated) output and the process exit code. err is
+// non-nil only for failures to start/execute the process itself — a non-zero
+// exit or a timeout is reported via the exit code, not err.
+func runBashInVault(ctx context.Context, vault, cmd string, timeout time.Duration) (string, int, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	c := exec.CommandContext(ctx, "bash", "-c", cmd)
+	c.Dir = vault
+	c.Stdin = nil // no stdin; reads return EOF immediately
+
+	out, err := c.CombinedOutput()
+	output := truncateBytes(out, maxToolOutput)
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return output + "\n[timed out after " + timeout.String() + "]", 124, nil
+	}
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return output, ee.ExitCode(), nil
+		}
+		return output, -1, fmt.Errorf("run: %w", err)
+	}
+	return output, 0, nil
+}
+
+// truncateBytes returns b as a string, truncated to max bytes with a marker.
+func truncateBytes(b []byte, max int) string {
+	if len(b) <= max {
+		return string(b)
+	}
+	return string(b[:max]) + "\n[output truncated]"
 }
