@@ -103,6 +103,25 @@ const (
 	slashHelp
 )
 
+func (c slashCommand) String() string {
+	switch c {
+	case slashNone:
+		return "slashNone"
+	case slashUnknown:
+		return "slashUnknown"
+	case slashClear:
+		return "slashClear"
+	case slashExit:
+		return "slashExit"
+	case slashModel:
+		return "slashModel"
+	case slashHelp:
+		return "slashHelp"
+	default:
+		return fmt.Sprintf("slashCommand(%d)", int(c))
+	}
+}
+
 func parseSlashCommand(input string) slashCommand {
 	s := strings.TrimSpace(input)
 	if !strings.HasPrefix(s, "/") {
@@ -122,7 +141,7 @@ func parseSlashCommand(input string) slashCommand {
 	}
 }
 
-const agentHelpText = "Commands: /clear (reset conversation), /exit (close), /model (show model), /help. " +
+const agentHelpText = "Commands: /clear (reset conversation), /exit (close), /model (show model), /help (show this help). " +
 	"Ask about your notes or tell me to manage files (rename, move, edit) in your vault."
 
 func agentSystemPrompt(vault string) string {
@@ -133,7 +152,7 @@ Your working directory is the vault root, and you are confined to it.
 
 Tools:
 - search_vault(query, k): semantic search over the notes. Use it to answer questions about note content. Cite excerpts by their numbered tag, e.g. [1].
-- bash(cmd): run a shell command in the vault (cd, ls, mv, cp, cat, sed, awk, etc.). Use it to inspect and modify files. Inspect with read-only commands before making destructive changes.
+- bash(cmd): run a shell command in the vault (ls, mv, cp, cat, sed, awk, etc.). Each call is a fresh, non-interactive shell, so directory changes do NOT persist between calls — chain steps in one command with && (e.g. cd subdir && cat file.md). Use it to inspect and modify files; inspect with read-only commands before making destructive changes.
 
 Guidelines:
 - For questions about the notes, prefer search_vault. For file management and content edits, use bash.
