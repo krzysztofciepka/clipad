@@ -142,6 +142,15 @@ func OpenIndex(path, vault string, embedder EmbeddingClient) (*Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	// Serialize all access through a single connection. The agent goroutine
+	// reads/writes the index (search prune + queries) concurrently with the
+	// background indexing sweep; a single connection avoids "database is locked"
+	// errors and also keeps a ":memory:" DB consistent across queries.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("busy_timeout: %w", err)
+	}
 	if _, err := db.Exec(indexSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
@@ -294,6 +303,12 @@ type Result struct {
 	Score     float32
 }
 
+// IsSearchable reports whether the index has an embedder configured and can
+// serve semantic searches.
+func (idx *Index) IsSearchable() bool {
+	return idx.embedder != nil
+}
+
 // Search embeds the query and returns the top-k chunks by cosine similarity,
 // restricted to rows that match the embedder's current model.
 func (idx *Index) Search(ctx context.Context, query string, k int) ([]Result, error) {
@@ -366,6 +381,44 @@ func (idx *Index) RemoveFile(ctx context.Context, absPath string) error {
 	}
 	_, err = idx.db.ExecContext(ctx, `DELETE FROM chunks WHERE file_path = ?`, rel)
 	return err
+}
+
+// PruneOrphans deletes all chunks whose file_path no longer exists under the
+// vault on disk. Returns the number of distinct files pruned. Cheap: one stat
+// per distinct file, no embedding calls.
+func (idx *Index) PruneOrphans(ctx context.Context) (int, error) {
+	rows, err := idx.db.QueryContext(ctx, `SELECT DISTINCT file_path FROM chunks`)
+	if err != nil {
+		return 0, fmt.Errorf("select distinct paths: %w", err)
+	}
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan file_path: %w", err)
+		}
+		paths = append(paths, p)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, fmt.Errorf("iterate file_paths: %w", err)
+	}
+	rows.Close()
+
+	// Only a definitive "does not exist" prunes a file. Any other stat error
+	// (permissions, I/O) is treated conservatively as "still present" so we
+	// never delete chunks for a file that may exist.
+	removed := 0
+	for _, rel := range paths {
+		if _, err := os.Stat(filepath.Join(idx.vault, rel)); os.IsNotExist(err) {
+			if _, err := idx.db.ExecContext(ctx, `DELETE FROM chunks WHERE file_path = ?`, rel); err != nil {
+				return removed, fmt.Errorf("delete %q: %w", rel, err)
+			}
+			removed++
+		}
+	}
+	return removed, nil
 }
 
 type indexProgressMsg struct {

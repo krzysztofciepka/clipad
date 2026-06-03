@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -21,103 +19,19 @@ type chatTurn struct {
 	Role      string // "user" | "assistant"
 	Content   string
 	Citations []citation
+	Trace     []traceLine // tool activity for assistant turns (in order)
+}
+
+type traceLine struct {
+	Kind string // "cmd" | "result" | "search"
+	Text string
+	OK   bool
 }
 
 type citation struct {
 	Path      string
 	StartLine int
 	EndLine   int
-}
-
-// chatChunkMsg / chatDoneMsg / chatErrMsg mirror the plugin streaming msgs
-// but with their own identity discriminator so the two flows don't collide.
-type chatChunkMsg struct {
-	chunks <-chan string
-	errs   <-chan error
-	delta  string
-}
-type chatDoneMsg struct{ chunks <-chan string }
-type chatErrMsg struct {
-	chunks <-chan string
-	err    error
-}
-
-type chatStartedMsg struct {
-	chunks    <-chan string
-	errs      <-chan error
-	citations []citation
-}
-type chatStartFailedMsg struct{ err error }
-
-func streamChatCmd(chunks <-chan string, errs <-chan error) tea.Cmd {
-	return readNextChatChunk(chunks, errs)
-}
-
-func readNextChatChunk(chunks <-chan string, errs <-chan error) tea.Cmd {
-	return func() tea.Msg {
-		select {
-		case d, ok := <-chunks:
-			if !ok {
-				return chatDoneMsg{chunks: chunks}
-			}
-			return chatChunkMsg{chunks: chunks, errs: errs, delta: d}
-		case err := <-errs:
-			if err != nil {
-				return chatErrMsg{chunks: chunks, err: err}
-			}
-			return chatDoneMsg{chunks: chunks}
-		}
-	}
-}
-
-// chatStartCmd performs retrieval, composes the request, and starts the stream.
-// It expects turns to already include the new user turn.
-func chatStartCmd(idx *Index, turns []chatTurn, query string, providerURL, apiKey, chatModel string) tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-		var chunks []Result
-		if idx != nil {
-			rs, err := idx.Search(ctx, query, 8)
-			if err != nil {
-				return chatStartFailedMsg{err: fmt.Errorf("retrieval: %w", err)}
-			}
-			chunks = rs
-		}
-		sys, msgs, cites := composeChatRequest(turns, chunks)
-		userMsg := encodeChatHistory(msgs)
-		ch, errsCh := streamChatCompletion(ctx, providerURL, apiKey, chatModel, sys, userMsg)
-		return chatStartedMsg{chunks: ch, errs: errsCh, citations: cites}
-	}
-}
-
-// encodeChatHistory packs prior turns + current user into a single string for
-// streamChatCompletion's userMessage parameter (which only takes system + user).
-// The retrieved-chunk context lives in the system prompt.
-//
-// For a single-turn message (no prior history) the output is just the user's
-// query verbatim. For multi-turn, prior turns render as a "User: …" /
-// "Assistant: …" transcript, with the current question as the last entry.
-func encodeChatHistory(msgs []chatMessage) string {
-	if len(msgs) == 0 {
-		return ""
-	}
-	if len(msgs) == 1 && msgs[0].Role == "user" {
-		return msgs[0].Content
-	}
-	var b strings.Builder
-	for i, m := range msgs {
-		if i > 0 {
-			b.WriteString("\n\n")
-		}
-		switch m.Role {
-		case "user":
-			b.WriteString("User: ")
-		case "assistant":
-			b.WriteString("Assistant: ")
-		}
-		b.WriteString(m.Content)
-	}
-	return b.String()
 }
 
 var (
@@ -145,13 +59,22 @@ func renderChatScrollback(turns []chatTurn, width int, streaming bool) string {
 			body := wordWrap("You: "+t.Content, width)
 			b.WriteString(chatUserStyle.Render("▸ ") + body + "\n")
 		case "assistant":
+			for _, tl := range t.Trace {
+				style := chatHintStyle
+				if tl.Kind == "result" && !tl.OK {
+					style = chatUserStyle
+				}
+				b.WriteString("  " + style.Render(wordWrap(tl.Text, width-2)) + "\n")
+			}
 			content := t.Content
 			// While streaming, show a placeholder for the empty in-flight turn.
-			if content == "" && streaming && i == len(turns)-1 {
-				content = "(retrieving context and thinking…)"
+			if content == "" && len(t.Trace) == 0 && streaming && i == len(turns)-1 {
+				content = "(thinking…)"
 			}
-			body := wordWrap("clipad: "+content, width)
-			b.WriteString(chatAssistantStyle.Render(body) + "\n")
+			if content != "" {
+				body := wordWrap("clipad: "+content, width)
+				b.WriteString(chatAssistantStyle.Render(body) + "\n")
+			}
 			for j, c := range t.Citations {
 				cite := fmt.Sprintf("[%d] %s L%d-L%d", j+1, c.Path, c.StartLine, c.EndLine)
 				b.WriteString("  " + chatCitationStyle.Render(wordWrap(cite, width-2)) + "\n")

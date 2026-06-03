@@ -263,3 +263,48 @@ func TestSearch_RanksByCosine(t *testing.T) {
 		t.Errorf("scores not descending: %v then %v", res[0].Score, res[1].Score)
 	}
 }
+
+func TestPruneOrphans_RemovesChunksForMissingFiles(t *testing.T) {
+	vault := t.TempDir()
+	writeFile(t, vault, "alive.md", "para one.\n\npara two.")
+	emb := onehotEmbedder("test-model", 8)
+	idx, err := OpenIndex(":memory:", vault, emb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	// Index both files, then delete one from disk.
+	gone := writeFile(t, vault, "gone.md", "dead chunk.")
+	if _, err := idx.RebuildFile(context.Background(), filepath.Join(vault, "alive.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.RebuildFile(context.Background(), gone); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := idx.PruneOrphans(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Errorf("pruned files = %d, want 1", removed)
+	}
+
+	var goneCount, aliveCount int
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = 'gone.md'`).Scan(&goneCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE file_path = 'alive.md'`).Scan(&aliveCount); err != nil {
+		t.Fatal(err)
+	}
+	if goneCount != 0 {
+		t.Errorf("gone.md chunks = %d, want 0", goneCount)
+	}
+	if aliveCount == 0 {
+		t.Errorf("alive.md chunks = 0, want > 0")
+	}
+}
