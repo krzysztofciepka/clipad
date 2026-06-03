@@ -1,6 +1,13 @@
 package main
 
-import "encoding/json"
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
 
 type agentMessage struct {
 	Role       string          `json:"role"`
@@ -83,4 +90,51 @@ func agentTools() []agentTool {
 			},
 		}},
 	}
+}
+
+// runAgentTurn performs one non-streaming chat completion with tools enabled
+// and returns the assistant message (which may carry content, tool_calls, or
+// both).
+func runAgentTurn(ctx context.Context, url, apiKey, model string, messages []agentMessage, tools []agentTool) (agentMessage, error) {
+	body, err := json.Marshal(map[string]any{
+		"model":       model,
+		"messages":    messages,
+		"tools":       tools,
+		"tool_choice": "auto",
+		"stream":      false,
+	})
+	if err != nil {
+		return agentMessage{}, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return agentMessage{}, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return agentMessage{}, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return agentMessage{}, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, truncate(string(respBody), 200))
+	}
+
+	var result struct {
+		Choices []struct {
+			Message agentMessage `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return agentMessage{}, fmt.Errorf("parse response: %w", err)
+	}
+	if len(result.Choices) == 0 {
+		return agentMessage{}, fmt.Errorf("no choices in response")
+	}
+	return result.Choices[0].Message, nil
 }

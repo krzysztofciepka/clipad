@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -60,5 +64,53 @@ func TestAgentMessage_KeepsContentForPlainMessage(t *testing.T) {
 	}
 	if round["content"] != "hi" {
 		t.Errorf("content = %v, want hi", round["content"])
+	}
+}
+
+func TestRunAgentTurn_ParsesToolCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"ls\"}"}}]}}]}`)
+	}))
+	defer server.Close()
+
+	msg, err := runAgentTurn(context.Background(), server.URL, "k", "m",
+		[]agentMessage{{Role: "user", Content: "list files"}}, agentTools())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msg.ToolCalls) != 1 || msg.ToolCalls[0].Function.Name != "bash" {
+		t.Fatalf("got %+v, want one bash tool call", msg)
+	}
+}
+
+func TestRunAgentTurn_ParsesContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"all done"}}]}`)
+	}))
+	defer server.Close()
+
+	msg, err := runAgentTurn(context.Background(), server.URL, "k", "m",
+		[]agentMessage{{Role: "user", Content: "hi"}}, agentTools())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.Content != "all done" || len(msg.ToolCalls) != 0 {
+		t.Fatalf("got %+v, want plain content", msg)
+	}
+}
+
+func TestRunAgentTurn_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"bad key"}`)
+	}))
+	defer server.Close()
+
+	_, err := runAgentTurn(context.Background(), server.URL, "bad", "m",
+		[]agentMessage{{Role: "user", Content: "hi"}}, agentTools())
+	if err == nil {
+		t.Fatal("expected error on 401")
 	}
 }
