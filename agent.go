@@ -92,6 +92,55 @@ func parseSearchArgs(argsJSON string) (string, int, error) {
 	return a.Query, a.K, nil
 }
 
+type slashCommand int
+
+const (
+	slashNone    slashCommand = iota // not a slash command
+	slashUnknown                     // slash prefix but unrecognised
+	slashClear
+	slashExit
+	slashModel
+	slashHelp
+)
+
+func parseSlashCommand(input string) slashCommand {
+	s := strings.TrimSpace(input)
+	if !strings.HasPrefix(s, "/") {
+		return slashNone
+	}
+	switch s {
+	case "/clear":
+		return slashClear
+	case "/exit":
+		return slashExit
+	case "/model":
+		return slashModel
+	case "/help":
+		return slashHelp
+	default:
+		return slashUnknown
+	}
+}
+
+const agentHelpText = "Commands: /clear (reset conversation), /exit (close), /model (show model), /help. " +
+	"Ask about your notes or tell me to manage files (rename, move, edit) in your vault."
+
+func agentSystemPrompt(vault string) string {
+	return fmt.Sprintf(`You are clipad's note-vault agent. You help the user manage and ask questions about their personal Markdown notes.
+
+The notes vault is located at: %s
+Your working directory is the vault root, and you are confined to it.
+
+Tools:
+- search_vault(query, k): semantic search over the notes. Use it to answer questions about note content. Cite excerpts by their numbered tag, e.g. [1].
+- bash(cmd): run a shell command in the vault (cd, ls, mv, cp, cat, sed, awk, etc.). Use it to inspect and modify files. Inspect with read-only commands before making destructive changes.
+
+Guidelines:
+- For questions about the notes, prefer search_vault. For file management and content edits, use bash.
+- Quote filenames that contain spaces.
+- When you finish a task, end with a short plain-text summary of what you did.`, vault)
+}
+
 // formatSearchResults renders hits as numbered excerpts and extracts citations.
 func formatSearchResults(results []Result) (string, []citation, bool) {
 	if len(results) == 0 {

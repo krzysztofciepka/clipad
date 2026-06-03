@@ -124,3 +124,28 @@ func TestFormatSearchResults_Empty(t *testing.T) {
 		t.Errorf("output %q should report no matches", out)
 	}
 }
+
+func TestAgentSystemPrompt_MentionsVaultAndTools(t *testing.T) {
+	p := agentSystemPrompt("/home/u/notes")
+	for _, want := range []string{"/home/u/notes", "search_vault", "bash"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("system prompt missing %q", want)
+		}
+	}
+}
+
+func TestParseSlashCommand(t *testing.T) {
+	cases := map[string]slashCommand{
+		"/clear":      slashClear,
+		"/exit":       slashExit,
+		"/model":      slashModel,
+		"/help":       slashHelp,
+		"/bogus":      slashUnknown,
+		"not a slash": slashNone,
+	}
+	for in, want := range cases {
+		if got := parseSlashCommand(in); got != want {
+			t.Errorf("parseSlashCommand(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
