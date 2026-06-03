@@ -1965,6 +1965,12 @@ func (m *model) recalcLayout() {
 		}
 		if editorWidth < 10 && chatWidth > 0 {
 			chatWidth = 0
+			if m.agentCancel != nil {
+				m.agentCancel()
+				m.agentCancel = nil
+			}
+			m.chatStreaming = false
+			m.agentEvents = nil
 			m.chatOpen = false
 			editorWidth = m.width
 		}

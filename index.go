@@ -142,6 +142,15 @@ func OpenIndex(path, vault string, embedder EmbeddingClient) (*Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	// Serialize all access through a single connection. The agent goroutine
+	// reads/writes the index (search prune + queries) concurrently with the
+	// background indexing sweep; a single connection avoids "database is locked"
+	// errors and also keeps a ":memory:" DB consistent across queries.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("busy_timeout: %w", err)
+	}
 	if _, err := db.Exec(indexSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
