@@ -73,8 +73,8 @@ func TestRunBashInVault_TimesOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code == 0 {
-		t.Errorf("timed-out command should not report exit 0")
+	if code != 124 {
+		t.Errorf("timed-out command: exit code = %d, want 124", code)
 	}
 }
 

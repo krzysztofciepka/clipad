@@ -13,7 +13,7 @@ import (
 const (
 	maxToolCalls  = 25 // hard cap on tool calls per user message
 	maxToolOutput = 4096
-	bashTimeout   = 30 // seconds; used as `bashTimeout * time.Second` in model wiring
+	bashTimeout   = 30 * time.Second // per-command wall-clock timeout
 )
 
 var sudoRE = regexp.MustCompile(`(^|\s)sudo(\s|$)`)
@@ -71,6 +71,7 @@ func runBashInVault(ctx context.Context, vault, cmd string, timeout time.Duratio
 	c := exec.CommandContext(ctx, "bash", "-c", cmd)
 	c.Dir = vault
 	c.Stdin = nil // no stdin; reads return EOF immediately
+	c.WaitDelay = timeout + 2*time.Second
 
 	out, err := c.CombinedOutput()
 	output := truncateBytes(out, maxToolOutput)
