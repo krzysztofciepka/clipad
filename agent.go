@@ -133,7 +133,7 @@ func runAgentLoop(ctx context.Context, deps agentDeps, msgs []agentMessage, even
 	for {
 		assistant, err := runAgentTurn(ctx, deps.url, deps.apiKey, deps.model, msgs, agentTools())
 		if err != nil {
-			send(agentEvent{Kind: evError, Err: err})
+			_ = send(agentEvent{Kind: evError, Err: err})
 			return
 		}
 		msgs = append(msgs, assistant)
@@ -145,15 +145,19 @@ func runAgentLoop(ctx context.Context, deps agentDeps, msgs []agentMessage, even
 		}
 
 		if len(assistant.ToolCalls) == 0 {
-			send(agentEvent{Kind: evDone, Messages: msgs})
+			_ = send(agentEvent{Kind: evDone, Messages: msgs})
 			return
 		}
 
+		capped := false
 		for _, tc := range assistant.ToolCalls {
 			if calls >= maxToolCalls {
-				send(agentEvent{Kind: evAssistantText, Text: "(stopped: reached the tool-call limit)"})
-				send(agentEvent{Kind: evDone, Messages: msgs})
-				return
+				// Cap reached. The API requires one tool result per tool_call,
+				// so append a placeholder result for this and every remaining
+				// call to keep the persisted conversation replayable.
+				msgs = append(msgs, agentMessage{Role: "tool", ToolCallID: tc.ID, Content: "(skipped: tool-call limit reached)"})
+				capped = true
+				continue
 			}
 			calls++
 
@@ -166,6 +170,11 @@ func runAgentLoop(ctx context.Context, deps agentDeps, msgs []agentMessage, even
 				return
 			}
 			msgs = append(msgs, agentMessage{Role: "tool", ToolCallID: tc.ID, Content: out})
+		}
+		if capped {
+			_ = send(agentEvent{Kind: evAssistantText, Text: "(stopped: reached the tool-call limit)"})
+			_ = send(agentEvent{Kind: evDone, Messages: msgs})
+			return
 		}
 	}
 }

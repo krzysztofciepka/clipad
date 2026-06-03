@@ -246,3 +246,69 @@ func TestRunAgentLoop_StopsAtToolCallCap(t *testing.T) {
 		t.Errorf("loop did not terminate with evDone")
 	}
 }
+
+func TestRunAgentLoop_EmitsErrorOnHTTPFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":"boom"}`)
+	}))
+	defer server.Close()
+
+	deps := agentDeps{url: server.URL, apiKey: "k", model: "m", vault: t.TempDir(), timeout: 5 * time.Second}
+	events := make(chan agentEvent)
+	go runAgentLoop(context.Background(), deps, []agentMessage{{Role: "user", Content: "hi"}}, events)
+	evs := collectEvents(events)
+
+	if len(evs) == 0 || evs[len(evs)-1].Kind != evError {
+		t.Fatalf("expected last event to be evError, got %+v", evs)
+	}
+	if evs[len(evs)-1].Err == nil {
+		t.Errorf("evError should carry a non-nil Err")
+	}
+}
+
+// When the cap fires part-way through a multi-tool-call assistant turn, every
+// tool_call must still get a paired tool-result message in the persisted
+// conversation (API requires 1:1 pairing).
+func TestRunAgentLoop_CapMidBatchKeepsToolResultsPaired(t *testing.T) {
+	vault := t.TempDir()
+	responses := make([]string, maxToolCalls+1)
+	for i := 0; i < maxToolCalls; i++ {
+		responses[i] = `{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"c","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"echo x\"}"}}]}}]}`
+	}
+	// The final turn returns THREE tool calls at once; the cap should already be
+	// reached, so all three must be skip-paired.
+	responses[maxToolCalls] = `{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[` +
+		`{"id":"a","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"echo a\"}"}},` +
+		`{"id":"b","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"echo b\"}"}},` +
+		`{"id":"d","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"echo d\"}"}}` +
+		`]}}]}`
+	server := scriptedServer(t, responses)
+	defer server.Close()
+
+	deps := agentDeps{url: server.URL, apiKey: "k", model: "m", vault: vault, timeout: 5 * time.Second}
+	events := make(chan agentEvent)
+	msgs := []agentMessage{{Role: "user", Content: "loop"}}
+	go runAgentLoop(context.Background(), deps, msgs, events)
+	evs := collectEvents(events)
+
+	var final []agentMessage
+	for _, ev := range evs {
+		if ev.Kind == evDone {
+			final = ev.Messages
+		}
+	}
+	if final == nil {
+		t.Fatal("no evDone with persisted messages")
+	}
+	toolCalls, toolResults := 0, 0
+	for _, m := range final {
+		toolCalls += len(m.ToolCalls)
+		if m.Role == "tool" {
+			toolResults++
+		}
+	}
+	if toolCalls != toolResults {
+		t.Errorf("pairing broken: %d tool_calls vs %d tool results", toolCalls, toolResults)
+	}
+}
