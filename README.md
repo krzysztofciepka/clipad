@@ -102,6 +102,7 @@ clipad path/to/dir/         # start a new note in that directory
 | `Ctrl+Space` | Open plugin selector |
 | `Ctrl+G` | Open AI shortcut selector |
 | `Ctrl+L` | Create AI shortcut |
+| `Ctrl+K` | Open the notes **agent** panel (ask about or manage your notes) |
 
 ### File Tree
 
@@ -180,6 +181,30 @@ The default library covers:
 - **Tech notes** — `onboard`, `explain`
 - **Universal utilities** — `tighten`, `tldr`, `outline`, `questions`, `examples`, `diagram`, `glossary`, `risks`
 - **Formatting** — `bullets`, `steps`, `table`, `headers`, `fmtjson`, `markdown`
+
+## Agent
+
+Press `Ctrl+K` to open the agent — a continuous chat in the right-hand panel
+that can both answer questions about your notes and manage them. It uses your
+active AI provider (blackbox.ai by default) with native tool-calling and has two
+tools:
+
+- **search_vault** — semantic search over your notes (cited inline; press `1`–`9`
+  to open a citation). Requires `embedding_provider` configured; before each
+  search it prunes index entries for files that no longer exist.
+- **bash** — runs shell commands (cd, mv, cp, cat, sed, awk, …) in your vault to
+  inspect and edit notes. Commands run with the vault as the working directory
+  and a best-effort guard that blocks paths escaping the vault and `sudo`.
+
+Example: *"rename all Task <N> files so N is sequential starting from 1, only in
+the Prywatne directory."*
+
+Slash commands: `/clear` (reset the conversation), `/exit` (close), `/model`
+(show the model), `/help`. Press `Esc` to stop a run.
+
+The agent's bash commands run automatically and are scoped to the vault by
+working directory plus a heuristic guard — this is a safety rail against
+accidents, not a security sandbox.
 
 ## Configuration
 
