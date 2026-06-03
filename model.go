@@ -439,64 +439,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.vaultSearchPending = true
 		return m, searchVaultCmd(m.indexer, msg.token, m.vaultSearchInput.Value(), 8, 80)
 
-	case chatStartedMsg:
-		m.chatActiveChunks = msg.chunks
-		m.chatCurrentCites = msg.citations
-		return m, streamChatCmd(msg.chunks, msg.errs)
+	case agentStartedMsg:
+		m.agentEvents = msg.events
+		return m, readNextAgentEvent(msg.events)
 
-	case chatStartFailedMsg:
-		m.chatStreaming = false
-		if len(m.chatTurns) > 0 && m.chatTurns[len(m.chatTurns)-1].Role == "assistant" {
-			m.chatTurns = m.chatTurns[:len(m.chatTurns)-1]
+	case agentEventMsg:
+		if msg.events != m.agentEvents {
+			return m, nil // superseded stream
 		}
-		m.errMsg = "Chat: " + msg.err.Error()
-		return m, nil
-
-	case chatChunkMsg:
-		if msg.chunks != m.chatActiveChunks {
-			return m, nil
-		}
-		last := &m.chatTurns[len(m.chatTurns)-1]
-		last.Content += msg.delta
 		innerW := m.chatWidth - 4
 		if innerW < 1 {
 			innerW = 1
 		}
-		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
-		m.chatViewport.GotoBottom()
-		return m, readNextChatChunk(msg.chunks, msg.errs)
+		switch msg.ev.Kind {
+		case evDone:
+			m.agentMessages = msg.ev.Messages
+			m.chatStreaming = false
+			m.agentEvents = nil
+			m.agentCancel = nil
+			m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, false))
+			m.chatViewport.GotoBottom()
+			return m, nil
+		case evError:
+			m.chatStreaming = false
+			m.agentEvents = nil
+			m.agentCancel = nil
+			m.chatTurns = applyAgentEvent(m.chatTurns, agentEvent{Kind: evAssistantText, Text: "Error: " + msg.ev.Err.Error()})
+			m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, false))
+			m.chatViewport.GotoBottom()
+			return m, nil
+		default:
+			m.chatTurns = applyAgentEvent(m.chatTurns, msg.ev)
+			m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
+			m.chatViewport.GotoBottom()
+			return m, readNextAgentEvent(msg.events)
+		}
 
-	case chatDoneMsg:
-		if msg.chunks != m.chatActiveChunks {
+	case agentClosedMsg:
+		if msg.events != m.agentEvents {
 			return m, nil
 		}
 		m.chatStreaming = false
-		m.chatActiveChunks = nil
-		m.chatCancel = nil
-		last := &m.chatTurns[len(m.chatTurns)-1]
-		last.Citations = m.chatCurrentCites
-		m.chatCurrentCites = nil
-		innerW := m.chatWidth - 4
-		if innerW < 1 {
-			innerW = 1
-		}
-		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
-		m.chatViewport.GotoBottom()
-		return m, nil
-
-	case chatErrMsg:
-		if msg.chunks != m.chatActiveChunks {
-			return m, nil
-		}
-		m.chatStreaming = false
-		m.chatActiveChunks = nil
-		last := &m.chatTurns[len(m.chatTurns)-1]
-		last.Content = "Error: " + msg.err.Error()
-		innerW := m.chatWidth - 4
-		if innerW < 1 {
-			innerW = 1
-		}
-		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
+		m.agentEvents = nil
+		m.agentCancel = nil
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -819,14 +804,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 
 		case "ctrl+k":
-			if m.indexer == nil || m.indexer.embedder == nil {
-				m.errMsg = "Configure embedding_provider in config.toml"
-				return m, nil
-			}
 			if m.chatOpen {
-				if m.chatCancel != nil {
-					m.chatCancel()
-					m.chatCancel = nil
+				if m.agentCancel != nil {
+					m.agentCancel()
+					m.agentCancel = nil
 				}
 				m.chatOpen = false
 				m.chatInput.Blur()
@@ -1126,12 +1107,12 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.chatStreaming {
 		if msg.String() == "esc" {
-			if m.chatCancel != nil {
-				m.chatCancel()
-				m.chatCancel = nil
+			if m.agentCancel != nil {
+				m.agentCancel()
+				m.agentCancel = nil
 			}
 			m.chatStreaming = false
-			m.chatActiveChunks = nil
+			m.agentEvents = nil
 			m.chatMode = chatModeView
 			m.chatInput.Blur()
 			return m, nil
@@ -1147,38 +1128,54 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.chatInput.Blur()
 			return m, nil
 		case "enter":
-			query := strings.TrimSpace(m.chatInput.Value())
-			if query == "" {
+			input := strings.TrimSpace(m.chatInput.Value())
+			if input == "" {
 				return m, nil
 			}
+			if sc := parseSlashCommand(input); sc != slashNone {
+				m.chatInput.SetValue("")
+				return m.handleAgentSlash(sc)
+			}
 			m.chatInput.SetValue("")
-			m.chatTurns = append(m.chatTurns, chatTurn{Role: "user", Content: query})
-			m.chatTurns = append(m.chatTurns, chatTurn{Role: "assistant", Content: ""})
-			m.chatStreaming = true
 
+			// Display turns.
+			m.chatTurns = append(m.chatTurns, chatTurn{Role: "user", Content: input})
+			m.chatTurns = append(m.chatTurns, chatTurn{Role: "assistant"})
+
+			// Resolve provider config.
 			provider := m.activeShortcutProvider
 			if provider == "" {
 				provider = defaultAIShortcutProvider
 			}
 			plugCfg, err := loadPluginConfig(provider)
 			if err != nil {
-				m.chatStreaming = false
 				m.errMsg = "Plugin config: " + err.Error()
-				if len(m.chatTurns) > 0 && m.chatTurns[len(m.chatTurns)-1].Role == "assistant" {
-					m.chatTurns = m.chatTurns[:len(m.chatTurns)-1]
-				}
+				m.chatTurns = m.chatTurns[:len(m.chatTurns)-2] // roll back user+assistant
 				return m, nil
 			}
 			url := defaultBlackboxURL
 			if provider == "openrouter" {
 				url = defaultOpenRouterURL
 			}
-			ctx, cancel := context.WithCancel(context.Background())
-			m.chatCancel = cancel
-			_ = ctx
 
-			// Render the user's question and the loading placeholder
-			// immediately so they show before retrieval/streaming starts.
+			// Conversation history (ensure a system message at the head).
+			if len(m.agentMessages) == 0 {
+				m.agentMessages = []agentMessage{{Role: "system", Content: agentSystemPrompt(m.vault)}}
+			}
+			m.agentMessages = append(m.agentMessages, agentMessage{Role: "user", Content: input})
+
+			m.chatStreaming = true
+			ctx, cancel := context.WithCancel(context.Background())
+			m.agentCancel = cancel
+			deps := agentDeps{
+				url:     url,
+				apiKey:  plugCfg["api_key"],
+				model:   plugCfg["model"],
+				vault:   m.vault,
+				idx:     m.indexer,
+				timeout: bashTimeout,
+			}
+
 			innerW := m.chatWidth - 4
 			if innerW < 1 {
 				innerW = 1
@@ -1186,7 +1183,7 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
 			m.chatViewport.GotoBottom()
 
-			return m, chatStartCmd(m.indexer, m.chatTurns, query, url, plugCfg["api_key"], plugCfg["model"])
+			return m, startAgentCmd(ctx, deps, m.agentMessages)
 		}
 		var cmd tea.Cmd
 		m.chatInput, cmd = m.chatInput.Update(msg)
@@ -1231,6 +1228,54 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// handleAgentSlash processes a recognized slash command typed in the agent
+// input. Returns the updated model.
+func (m model) handleAgentSlash(sc slashCommand) (tea.Model, tea.Cmd) {
+	innerW := m.chatWidth - 4
+	if innerW < 1 {
+		innerW = 1
+	}
+	switch sc {
+	case slashExit:
+		if m.agentCancel != nil {
+			m.agentCancel()
+			m.agentCancel = nil
+		}
+		m.chatOpen = false
+		m.chatInput.Blur()
+		m.recalcLayout()
+		return m, nil
+	case slashClear:
+		m.chatTurns = nil
+		m.agentMessages = nil
+		m.chatViewport.SetContent("")
+		return m, nil
+	case slashModel:
+		provider := m.activeShortcutProvider
+		if provider == "" {
+			provider = defaultAIShortcutProvider
+		}
+		modelName := "(unset)"
+		if cfg, err := loadPluginConfig(provider); err == nil && cfg["model"] != "" {
+			modelName = cfg["model"]
+		}
+		m.chatTurns = append(m.chatTurns, chatTurn{Role: "assistant", Content: fmt.Sprintf("Model: %s (provider: %s)", modelName, provider)})
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, false))
+		m.chatViewport.GotoBottom()
+		return m, nil
+	case slashHelp:
+		m.chatTurns = append(m.chatTurns, chatTurn{Role: "assistant", Content: agentHelpText})
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, false))
+		m.chatViewport.GotoBottom()
+		return m, nil
+	default: // slashUnknown
+		m.chatTurns = append(m.chatTurns, chatTurn{Role: "assistant", Content: "Unknown command. " + agentHelpText})
+		m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, false))
+		m.chatViewport.GotoBottom()
+		return m, nil
+	}
 }
 
 func (m model) handleVaultSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
