@@ -32,7 +32,11 @@ func dispatchTool(ctx context.Context, deps agentDeps, name, argsJSON string) (s
 		if err := vaultGuard(deps.vault, cmd); err != nil {
 			return err.Error(), nil, false
 		}
-		out, code, err := runBashInVault(ctx, deps.vault, cmd, deps.timeout)
+		timeout := deps.timeout
+		if timeout <= 0 {
+			timeout = bashTimeout
+		}
+		out, code, err := runBashInVault(ctx, deps.vault, cmd, timeout)
 		if err != nil {
 			return "error: " + err.Error(), nil, false
 		}
@@ -43,7 +47,7 @@ func dispatchTool(ctx context.Context, deps agentDeps, name, argsJSON string) (s
 		if err != nil {
 			return "error: " + err.Error(), nil, false
 		}
-		if deps.idx == nil || deps.idx.embedder == nil {
+		if deps.idx == nil || !deps.idx.IsSearchable() {
 			return "semantic search is not configured (set embedding_provider in config.toml)", nil, false
 		}
 		_, _ = deps.idx.PruneOrphans(ctx)

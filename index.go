@@ -294,6 +294,12 @@ type Result struct {
 	Score     float32
 }
 
+// IsSearchable reports whether the index has an embedder configured and can
+// serve semantic searches.
+func (idx *Index) IsSearchable() bool {
+	return idx.embedder != nil
+}
+
 // Search embeds the query and returns the top-k chunks by cosine similarity,
 // restricted to rows that match the embedder's current model.
 func (idx *Index) Search(ctx context.Context, query string, k int) ([]Result, error) {
