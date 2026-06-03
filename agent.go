@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // agentDeps bundles everything a tool call or the loop needs.
@@ -192,6 +194,39 @@ func toolLabel(tc agentToolCall) string {
 		}
 	}
 	return tc.Function.Arguments
+}
+
+// agentStartedMsg carries the freshly created event channel.
+type agentStartedMsg struct{ events <-chan agentEvent }
+
+// agentEventMsg carries one event plus its channel (identity token).
+type agentEventMsg struct {
+	events <-chan agentEvent
+	ev     agentEvent
+}
+
+// agentClosedMsg fires when the channel closes without a terminal event
+// (e.g. cancelled).
+type agentClosedMsg struct{ events <-chan agentEvent }
+
+// startAgentCmd launches the loop goroutine and returns the channel.
+func startAgentCmd(ctx context.Context, deps agentDeps, msgs []agentMessage) tea.Cmd {
+	return func() tea.Msg {
+		events := make(chan agentEvent)
+		go runAgentLoop(ctx, deps, msgs, events)
+		return agentStartedMsg{events: events}
+	}
+}
+
+// readNextAgentEvent blocks for the next event from the channel.
+func readNextAgentEvent(events <-chan agentEvent) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-events
+		if !ok {
+			return agentClosedMsg{events: events}
+		}
+		return agentEventMsg{events: events, ev: ev}
+	}
 }
 
 type slashCommand int

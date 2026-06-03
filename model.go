@@ -197,6 +197,11 @@ type model struct {
 	chatCancel       context.CancelFunc
 	chatCurrentCites []citation
 
+	// Agent (the Ctrl+K panel runs an agentic tool-calling loop)
+	agentMessages []agentMessage    // full OpenAI conversation incl. system
+	agentEvents   <-chan agentEvent // active event stream (nil when idle)
+	agentCancel   context.CancelFunc
+
 	// Quick capture (Ctrl+J) and delegate-to-new-note (Ctrl+O)
 	inboxPath     string         // raw config value; "" → default "inbox.md"
 	captureInput  textarea.Model // multi-line, Shift+Enter for newline
