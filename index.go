@@ -368,6 +368,37 @@ func (idx *Index) RemoveFile(ctx context.Context, absPath string) error {
 	return err
 }
 
+// PruneOrphans deletes all chunks whose file_path no longer exists under the
+// vault on disk. Returns the number of distinct files pruned. Cheap: one stat
+// per distinct file, no embedding calls.
+func (idx *Index) PruneOrphans(ctx context.Context) (int, error) {
+	rows, err := idx.db.QueryContext(ctx, `SELECT DISTINCT file_path FROM chunks`)
+	if err != nil {
+		return 0, fmt.Errorf("select distinct paths: %w", err)
+	}
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		paths = append(paths, p)
+	}
+	rows.Close()
+
+	removed := 0
+	for _, rel := range paths {
+		if _, err := os.Stat(filepath.Join(idx.vault, rel)); os.IsNotExist(err) {
+			if _, err := idx.db.ExecContext(ctx, `DELETE FROM chunks WHERE file_path = ?`, rel); err != nil {
+				return removed, fmt.Errorf("delete %q: %w", rel, err)
+			}
+			removed++
+		}
+	}
+	return removed, nil
+}
+
 type indexProgressMsg struct {
 	done, total int
 	embedded    int  // cumulative chunks freshly embedded this sweep
