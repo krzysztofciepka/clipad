@@ -809,6 +809,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.agentCancel()
 					m.agentCancel = nil
 				}
+				m.chatStreaming = false
+				m.agentEvents = nil
 				m.chatOpen = false
 				m.chatInput.Blur()
 				m.recalcLayout()
@@ -1158,11 +1160,16 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				url = defaultOpenRouterURL
 			}
 
-			// Conversation history (ensure a system message at the head).
-			if len(m.agentMessages) == 0 {
-				m.agentMessages = []agentMessage{{Role: "system", Content: agentSystemPrompt(m.vault)}}
+			// Build the request conversation as a local slice. Persisted history
+			// (m.agentMessages) is only committed on evDone, so a cancel or error
+			// leaves no dangling user message to corrupt the next turn.
+			convo := m.agentMessages
+			if len(convo) == 0 {
+				convo = []agentMessage{{Role: "system", Content: agentSystemPrompt(m.vault)}}
 			}
-			m.agentMessages = append(m.agentMessages, agentMessage{Role: "user", Content: input})
+			msgs := make([]agentMessage, 0, len(convo)+1)
+			msgs = append(msgs, convo...)
+			msgs = append(msgs, agentMessage{Role: "user", Content: input})
 
 			m.chatStreaming = true
 			ctx, cancel := context.WithCancel(context.Background())
@@ -1183,7 +1190,7 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.chatViewport.SetContent(renderChatScrollback(m.chatTurns, innerW, m.chatStreaming))
 			m.chatViewport.GotoBottom()
 
-			return m, startAgentCmd(ctx, deps, m.agentMessages)
+			return m, startAgentCmd(ctx, deps, msgs)
 		}
 		var cmd tea.Cmd
 		m.chatInput, cmd = m.chatInput.Update(msg)
