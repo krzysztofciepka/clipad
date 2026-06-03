@@ -279,12 +279,12 @@ func applyAgentEvent(turns []chatTurn, ev agentEvent) []chatTurn {
 	case evToolResult:
 		if ev.Tool == "search_vault" {
 			last.Citations = append(last.Citations, ev.Cites...)
-			last.Trace = append(last.Trace, traceLine{Kind: "result", Text: fmt.Sprintf("  → %d result(s)", len(ev.Cites)), OK: ev.OK})
+			last.Trace = append(last.Trace, traceLine{Kind: "result", Text: fmt.Sprintf("→ %d result(s)", len(ev.Cites)), OK: ev.OK})
 			return turns
 		}
 		text := "✓ (exit 0)"
 		if !ev.OK {
-			text = "✗ " + firstLine(ev.Output)
+			text = "✗ " + firstLine(stripExitLine(ev.Output))
 		} else if out := strings.TrimSpace(stripExitLine(ev.Output)); out != "" {
 			text = out
 		}

@@ -286,8 +286,31 @@ func TestApplyAgentEvent_AppendsTraceAndContent(t *testing.T) {
 	if last.Trace[0].Kind != "cmd" || !strings.Contains(last.Trace[0].Text, "mv a b") {
 		t.Errorf("trace[0] = %+v", last.Trace[0])
 	}
+	if last.Trace[1].Text != "✓ (exit 0)" || !last.Trace[1].OK {
+		t.Errorf("trace[1] = %+v, want ✓ (exit 0) ok=true", last.Trace[1])
+	}
 	if last.Content != "Renamed." {
 		t.Errorf("content = %q, want Renamed.", last.Content)
+	}
+}
+
+func TestApplyAgentEvent_FailedBashShowsError(t *testing.T) {
+	turns := []chatTurn{{Role: "user", Content: "run"}, {Role: "assistant"}}
+	turns = applyAgentEvent(turns, agentEvent{Kind: evToolStart, Tool: "bash", Label: "cat nope"})
+	turns = applyAgentEvent(turns, agentEvent{
+		Kind: evToolResult, Tool: "bash", OK: false,
+		Output: "exit 1\ncat: nope: No such file or directory\n",
+	})
+	last := turns[len(turns)-1]
+	res := last.Trace[len(last.Trace)-1]
+	if res.OK {
+		t.Errorf("failed result should have OK=false")
+	}
+	if !strings.Contains(res.Text, "No such file") {
+		t.Errorf("trace text %q should contain the error output, not just the exit code", res.Text)
+	}
+	if strings.Contains(res.Text, "exit 1") {
+		t.Errorf("trace text %q should not show the raw exit-code line", res.Text)
 	}
 }
 
