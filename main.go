@@ -164,6 +164,7 @@ func main() {
 	plugins := []Plugin{
 		&BlackboxPlugin{},
 		&OpenRouterPlugin{},
+		&OpenCodePlugin{},
 	}
 
 	emb, embErr := newEmbeddingClient(cfg)
