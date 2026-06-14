@@ -93,17 +93,25 @@ func saveShortcuts(shortcuts []AIShortcut) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// shortcutProviderURL maps a shortcut provider name to its chat-completion
+// endpoint. Unknown providers fall back to blackbox. Keep these cases in sync
+// with the registered Plugin endpoints (plugin_*.go).
+func shortcutProviderURL(provider string) string {
+	switch provider {
+	case "openrouter":
+		return defaultOpenRouterURL
+	case "opencode":
+		return defaultOpenCodeURL
+	default:
+		return defaultBlackboxURL
+	}
+}
+
 // runShortcutStream issues a streaming chat-completion using the shortcut's
 // prompt as the user instruction. Returns channels that mirror Plugin.Run.
 func runShortcutStream(ctx context.Context, shortcut AIShortcut, content, provider string, config map[string]string) (<-chan string, <-chan error) {
 	systemPrompt := "You are a text processing assistant. Apply the following instruction to the provided text. Return ONLY the processed text, nothing else."
 	userMessage := fmt.Sprintf("Instruction: %s\n\nText:\n%s", shortcut.Prompt, content)
-	var url string
-	switch provider {
-	case "openrouter":
-		url = defaultOpenRouterURL
-	default:
-		url = defaultBlackboxURL
-	}
+	url := shortcutProviderURL(provider)
 	return streamChatCompletion(ctx, url, config["api_key"], config["model"], systemPrompt, userMessage)
 }
