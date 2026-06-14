@@ -60,6 +60,21 @@ func streamChatCompletion(ctx context.Context, url, apiKey, model, systemPrompt,
 			return
 		}
 
+		// filter strips reasoning-model <think>...</think> spans so callers
+		// only receive the final answer, not the chain-of-thought.
+		var filter thinkFilter
+		emit := func(s string) bool {
+			if s == "" {
+				return true
+			}
+			select {
+			case chunks <- s:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -71,6 +86,7 @@ func streamChatCompletion(ctx context.Context, url, apiKey, model, systemPrompt,
 			}
 			payload := strings.TrimPrefix(line, "data: ")
 			if payload == "[DONE]" {
+				emit(filter.flush())
 				return
 			}
 			var frame struct {
@@ -86,12 +102,11 @@ func streamChatCompletion(ctx context.Context, url, apiKey, model, systemPrompt,
 			if len(frame.Choices) == 0 || frame.Choices[0].Delta.Content == "" {
 				continue
 			}
-			select {
-			case chunks <- frame.Choices[0].Delta.Content:
-			case <-ctx.Done():
+			if !emit(filter.feed(frame.Choices[0].Delta.Content)) {
 				return
 			}
 		}
+		emit(filter.flush())
 		if err := scanner.Err(); err != nil && ctx.Err() == nil {
 			errs <- fmt.Errorf("stream read error: %w", err)
 		}
@@ -123,8 +138,10 @@ func emitBlocking(ctx context.Context, body io.Reader, chunks chan<- string, err
 		errs <- fmt.Errorf("no choices in response")
 		return
 	}
+	var filter thinkFilter
+	content := filter.feed(result.Choices[0].Message.Content) + filter.flush()
 	select {
-	case chunks <- result.Choices[0].Message.Content:
+	case chunks <- content:
 	case <-ctx.Done():
 	}
 }
