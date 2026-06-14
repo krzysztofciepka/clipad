@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const defaultOpenCodeURL = "https://opencode.ai/zen/v1/chat/completions"
+const defaultOpenCodeURL = "https://opencode.ai/zen/go/v1/chat/completions"
 
 type OpenCodePlugin struct {
 	BaseURL string // override for testing; empty uses default
@@ -17,7 +17,7 @@ func (p *OpenCodePlugin) Description() string { return "LLM-powered note transfo
 func (p *OpenCodePlugin) ConfigFields() []ConfigField {
 	return []ConfigField{
 		{Key: "api_key", Label: "API Key", Placeholder: "sk-...", Secret: true},
-		{Key: "model", Label: "Model", Placeholder: "minimax-m3-free", Secret: false},
+		{Key: "model", Label: "Model", Placeholder: "minimax-m3", Secret: false},
 	}
 }
 

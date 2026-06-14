@@ -43,8 +43,8 @@ func TestOpenCodePlugin_Run_StreamingSmoke(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if req["model"] != "minimax-m3-free" {
-			t.Errorf("model = %v, want minimax-m3-free", req["model"])
+		if req["model"] != "minimax-m3" {
+			t.Errorf("model = %v, want minimax-m3", req["model"])
 		}
 		if req["stream"] != true {
 			t.Errorf("stream = %v, want true", req["stream"])
@@ -62,7 +62,7 @@ func TestOpenCodePlugin_Run_StreamingSmoke(t *testing.T) {
 	defer server.Close()
 
 	p := &OpenCodePlugin{BaseURL: server.URL}
-	cfg := map[string]string{"api_key": "test-key", "model": "minimax-m3-free"}
+	cfg := map[string]string{"api_key": "test-key", "model": "minimax-m3"}
 	chunks, errs := p.Run(context.Background(), "Original", "Translate", cfg)
 	got, err := drainStream(t, chunks, errs)
 	if err != nil {
@@ -81,7 +81,7 @@ func TestOpenCodePlugin_Run_AuthError(t *testing.T) {
 	defer server.Close()
 
 	p := &OpenCodePlugin{BaseURL: server.URL}
-	cfg := map[string]string{"api_key": "bad", "model": "minimax-m3-free"}
+	cfg := map[string]string{"api_key": "bad", "model": "minimax-m3"}
 	chunks, errs := p.Run(context.Background(), "c", "p", cfg)
 	got, err := drainStream(t, chunks, errs)
 	if got != "" {
