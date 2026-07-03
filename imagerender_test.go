@@ -103,3 +103,36 @@ func TestImageRegistry(t *testing.T) {
 		t.Error("second markTransmitted should be false")
 	}
 }
+
+func TestRenderImageElementFallbackChip(t *testing.T) {
+	reg := newImageRegistry()
+	lines, h := renderImageElement(reg, false, "/note", "assets/pic.png", 40)
+	if h != 1 || len(lines) != 1 {
+		t.Fatalf("fallback should be single row, got h=%d lines=%d", h, len(lines))
+	}
+	if !strings.Contains(lines[0], "pic.png") || !strings.Contains(lines[0], "🖼") {
+		t.Errorf("chip content wrong: %q", lines[0])
+	}
+}
+
+func TestRenderImageElementKitty(t *testing.T) {
+	old := imageDimensions
+	defer func() { imageDimensions = old }()
+	imageDimensions = func(path string) (int, int, error) { return 160, 320, nil } // 20x20 cells @ default
+	reg := newImageRegistry()
+	lines, h := renderImageElement(reg, true, "/note", "assets/pic.png", 40)
+	if h < 1 || len(lines) != h {
+		t.Fatalf("kitty rows mismatch: h=%d lines=%d", h, len(lines))
+	}
+	if !strings.Contains(lines[0], "\x1b_G") {
+		t.Errorf("first render should include transmit sequence: %q", lines[0])
+	}
+	if strings.Count(lines[len(lines)-1], string(kitty.Placeholder)) == 0 {
+		t.Errorf("rows should contain placeholder cells")
+	}
+	// Second render of the same asset must NOT re-transmit.
+	lines2, _ := renderImageElement(reg, true, "/note", "assets/pic.png", 40)
+	if strings.Contains(lines2[0], "\x1b_G") {
+		t.Errorf("second render should not re-transmit: %q", lines2[0])
+	}
+}

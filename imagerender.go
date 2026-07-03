@@ -3,6 +3,12 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -171,4 +177,53 @@ func (r *imageRegistry) markTransmitted(hash string) bool {
 	}
 	r.transmitted[hash] = true
 	return true
+}
+
+// imageDimensions returns the pixel width/height of the image at path,
+// decoded from its header only. Overridable in tests.
+var imageDimensions = func(path string) (int, int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
+}
+
+// imageChip renders the fallback single-line representation of an image
+// element for terminals without kitty graphics support.
+func imageChip(target string) string {
+	return "🖼 image (" + filepath.Base(target) + ")"
+}
+
+// renderImageElement returns the display rows for an image-element line and
+// how many terminal rows they occupy. On the kitty path it returns
+// placeholder rows (the first row prefixed with the transmit sequence the
+// first time the asset is rendered in this session). On the fallback path it
+// returns a single chip row.
+func renderImageElement(reg *imageRegistry, kittyOK bool, noteDir, target string, maxCols int) ([]string, int) {
+	if !kittyOK {
+		return []string{imageChip(target)}, 1
+	}
+	abs := resolveAssetPath(noteDir, target)
+	w, h, derr := imageDimensions(abs)
+	if derr != nil {
+		return []string{imageChip(target)}, 1
+	}
+	if maxCols > maxImageCols {
+		maxCols = maxImageCols
+	}
+	cols, rows := imageRenderSize(w, h, defaultCellW, defaultCellH, maxCols, maxImageRows)
+	data, _ := os.ReadFile(abs)     // best-effort; dimensions already validated above
+	hash := assetFilename(data, "") // stable per content; date irrelevant for keying
+	id := reg.idFor(hash)
+	block := buildPlaceholderBlock(id, cols, rows)
+	if reg.markTransmitted(hash) {
+		block[0] = buildTransmitSequence(id, cols, rows, data) + block[0]
+	}
+	return block, rows
 }
