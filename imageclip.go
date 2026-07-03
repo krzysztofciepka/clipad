@@ -77,12 +77,16 @@ var runWithStdin = func(stdin []byte, name string, args ...string) error {
 	return cmd.Run()
 }
 
+// lookPath is an indirection over exec.LookPath so tests can inject a fixed
+// result without depending on real PATH contents.
+var lookPath = exec.LookPath
+
 func imageToolAvailable(env clipEnv) bool {
 	name, _ := readImageCmd(env)
 	if name == "" {
 		return false
 	}
-	_, err := exec.LookPath(name)
+	_, err := lookPath(name)
 	return err == nil
 }
 

@@ -419,12 +419,18 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 }
 
 // InsertImageLink inserts link on its own line at the cursor, atomically
-// (undo-wrapped like Paste).
+// (undo-wrapped like Paste). If a selection is active, it is replaced first,
+// mirroring Paste().
 func (e *SelectableEditor) InsertImageLink(link string) {
 	pre := e.recordOp()
+	if e.selActive {
+		sL, sC, eL, eC := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+		newContent := deleteText(e.Value(), sL, sC, eL, eC)
+		e.SetValue(newContent)
+		e.moveTo(sL, sC)
+		e.selActive = false
+	}
 	// Ensure the element sits on its own line.
-	line := e.Value()
-	_ = line
 	e.InsertString("\n" + link + "\n")
 	e.commitOp(pre)
 }
