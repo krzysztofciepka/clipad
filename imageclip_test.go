@@ -43,3 +43,36 @@ func TestProbeIndicatesImage(t *testing.T) {
 		t.Error("x11: want image detected")
 	}
 }
+
+func TestClipboardHasImageUsesRunner(t *testing.T) {
+	old := runCapture
+	defer func() { runCapture = old }()
+	runCapture = func(name string, args ...string) ([]byte, error) {
+		return []byte("text/plain\nimage/png\n"), nil
+	}
+	if !clipboardHasImage(clipWayland) {
+		t.Error("want image detected via injected runner")
+	}
+	runCapture = func(name string, args ...string) ([]byte, error) {
+		return []byte("text/plain\n"), nil
+	}
+	if clipboardHasImage(clipWayland) {
+		t.Error("want no image")
+	}
+}
+
+func TestWriteClipboardImageUsesStdin(t *testing.T) {
+	old := runWithStdin
+	defer func() { runWithStdin = old }()
+	var gotStdin []byte
+	var gotName string
+	runWithStdin = func(stdin []byte, name string, args ...string) error {
+		gotStdin = stdin
+		gotName = name
+		return nil
+	}
+	_ = writeClipboardImage(clipWayland, []byte("BYTES"))
+	if gotName != "wl-copy" || string(gotStdin) != "BYTES" {
+		t.Errorf("write = %q stdin=%q", gotName, gotStdin)
+	}
+}

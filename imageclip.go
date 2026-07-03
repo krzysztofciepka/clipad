@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -59,3 +62,50 @@ func probeIndicatesImage(env clipEnv, out []byte) bool {
 
 // currentClipEnv is a convenience wrapper over the real environment.
 func currentClipEnv() clipEnv { return detectClipEnv(os.Getenv) }
+
+var runCapture = func(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).Output()
+}
+
+var runWithStdin = func(stdin []byte, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	return cmd.Run()
+}
+
+func imageToolAvailable(env clipEnv) bool {
+	name, _ := readImageCmd(env)
+	if name == "" {
+		return false
+	}
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func clipboardHasImage(env clipEnv) bool {
+	name, args := probeImageCmd(env)
+	if name == "" {
+		return false
+	}
+	out, err := runCapture(name, args...)
+	if err != nil {
+		return false
+	}
+	return probeIndicatesImage(env, out)
+}
+
+func readClipboardImage(env clipEnv) ([]byte, error) {
+	name, args := readImageCmd(env)
+	if name == "" {
+		return nil, fmt.Errorf("no clipboard tool for this environment")
+	}
+	return runCapture(name, args...)
+}
+
+func writeClipboardImage(env clipEnv, data []byte) error {
+	name, args := writeImageCmd(env)
+	if name == "" {
+		return fmt.Errorf("no clipboard tool for this environment")
+	}
+	return runWithStdin(data, name, args...)
+}
