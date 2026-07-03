@@ -679,3 +679,21 @@ func TestEditorRendersImageChip(t *testing.T) {
 		t.Errorf("editor leaked raw link text:\n%s", out)
 	}
 }
+
+func TestEditorImageBlockDoesNotOverflowHeight(t *testing.T) {
+	old := imageDimensions
+	defer func() { imageDimensions = old }()
+	imageDimensions = func(path string) (int, int, error) { return 160, 320, nil }
+
+	e := newSelectableEditor()
+	height := 10
+	setEditorSize(&e, 40, height)
+	e.SetImageContext(newImageRegistry(), true, t.TempDir())
+	e.SetValue("line1\nline2\nline3\nline4\nline5\nline6\nline7\n![](assets/pic.png)\ntrailing")
+	out := e.render()
+
+	rows := strings.Count(out, "\n") + 1
+	if rows > height {
+		t.Errorf("render emitted %d visual rows, want <= height %d:\n%s", rows, height, out)
+	}
+}

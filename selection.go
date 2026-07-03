@@ -664,11 +664,20 @@ func (e SelectableEditor) render() string {
 	drawnRows := 0
 
 	for i := e.visualYOffset; i < endIdx; i++ {
+		if drawnRows >= height {
+			break
+		}
 		r := rows[i]
 
 		if r.startCol == 0 && r.line < len(lines) {
 			if target, ok := parseImageElement(lines[r.line]); ok && e.imgReg != nil {
 				imgLines, _ := renderImageElement(e.imgReg, e.kittyImages, e.noteDir, target, wrapWidth)
+				remaining := height - drawnRows
+				if remaining <= 0 {
+					imgLines = nil
+				} else if len(imgLines) > remaining {
+					imgLines = imgLines[:remaining]
+				}
 				pad := strings.Repeat(" ", numWidth)
 				for _, il := range imgLines {
 					b.WriteString(lineNumberStyle.Render(pad))
