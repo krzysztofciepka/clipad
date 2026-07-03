@@ -1987,7 +1987,7 @@ func applyExpanded(node *TreeNode, m map[string]bool) {
 
 func (m model) togglePreview() (tea.Model, tea.Cmd) {
 	if m.editorMode == modeEdit {
-		vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight)
+		vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight, m.imgReg, m.kittyImages, m.currentNoteDir())
 		if err != nil {
 			m.errMsg = fmt.Sprintf("Preview failed: %v", err)
 			return m, nil
