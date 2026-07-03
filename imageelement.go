@@ -1,6 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -26,4 +30,39 @@ func parseImageElement(line string) (string, bool) {
 		return "", false
 	}
 	return target, true
+}
+
+func assetFilename(data []byte, date string) string {
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("img-%s-%s.png", date, hex.EncodeToString(sum[:])[:8])
+}
+
+func saveAsset(vault string, data []byte, date string) (string, error) {
+	dir := filepath.Join(vault, "assets")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	abs := filepath.Join(dir, assetFilename(data, date))
+	if _, err := os.Stat(abs); err == nil {
+		return abs, nil // already stored (content-addressed)
+	}
+	if err := os.WriteFile(abs, data, 0o644); err != nil {
+		return "", err
+	}
+	return abs, nil
+}
+
+func assetRelPath(noteDir, assetAbs string) string {
+	rel, err := filepath.Rel(noteDir, assetAbs)
+	if err != nil {
+		return assetAbs
+	}
+	return filepath.ToSlash(rel)
+}
+
+func resolveAssetPath(noteDir, target string) string {
+	if filepath.IsAbs(target) {
+		return target
+	}
+	return filepath.Join(noteDir, filepath.FromSlash(target))
 }
