@@ -521,6 +521,22 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	case "ctrl+shift+z", "ctrl+y":
 		e.Redo()
 		return nil
+	case "left":
+		if e.selActive {
+			e.ClearSelection()
+		}
+		e.moveCursorLeft()
+		e.adjustViewOffset()
+		e.noteMovement()
+		return nil
+	case "right":
+		if e.selActive {
+			e.ClearSelection()
+		}
+		e.moveCursorRight()
+		e.adjustViewOffset()
+		e.noteMovement()
+		return nil
 	case "shift+left":
 		e.startSelectionIfNeeded()
 		e.moveCursorLeft()
@@ -584,6 +600,10 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	case "backspace", "delete":
 		if e.selActive {
 			e.DeleteSelection()
+			return nil
+		}
+		if _, ok := e.LoneImageElement(); ok {
+			e.DeleteCurrentLine()
 			return nil
 		}
 		pre := e.snapshotNow()
