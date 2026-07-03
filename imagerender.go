@@ -144,3 +144,31 @@ func buildPlaceholderBlock(id, cols, rows int) []string {
 	}
 	return out
 }
+
+type imageRegistry struct {
+	ids         map[string]int
+	transmitted map[string]bool
+	nextID      int
+}
+
+func newImageRegistry() *imageRegistry {
+	return &imageRegistry{ids: map[string]int{}, transmitted: map[string]bool{}, nextID: 1}
+}
+
+func (r *imageRegistry) idFor(hash string) int {
+	if id, ok := r.ids[hash]; ok {
+		return id
+	}
+	id := r.nextID
+	r.ids[hash] = id
+	r.nextID++
+	return id
+}
+
+func (r *imageRegistry) markTransmitted(hash string) bool {
+	if r.transmitted[hash] {
+		return false
+	}
+	r.transmitted[hash] = true
+	return true
+}

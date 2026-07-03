@@ -85,3 +85,21 @@ func TestBuildTransmitSequenceSmall(t *testing.T) {
 		t.Errorf("not terminated with ST: %q", seq)
 	}
 }
+
+func TestImageRegistry(t *testing.T) {
+	r := newImageRegistry()
+	id1 := r.idFor("aaa")
+	id2 := r.idFor("bbb")
+	if id1 == id2 || id1 < 1 || id2 < 1 {
+		t.Errorf("ids not distinct/positive: %d %d", id1, id2)
+	}
+	if r.idFor("aaa") != id1 {
+		t.Error("id not stable for same hash")
+	}
+	if !r.markTransmitted("aaa") {
+		t.Error("first markTransmitted should be true")
+	}
+	if r.markTransmitted("aaa") {
+		t.Error("second markTransmitted should be false")
+	}
+}
