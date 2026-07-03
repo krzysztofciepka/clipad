@@ -680,6 +680,20 @@ func TestEditorRendersImageChip(t *testing.T) {
 	}
 }
 
+func TestAtomicCol(t *testing.T) {
+	line := "![](assets/pic.png)"
+	n := len([]rune(line))
+	if atomicCol(line, 5, true) != n {
+		t.Errorf("moving right into element should snap to end")
+	}
+	if atomicCol(line, 5, false) != 0 {
+		t.Errorf("moving left into element should snap to start")
+	}
+	if atomicCol("plain text", 3, true) != 3 {
+		t.Errorf("non-element column should be unchanged")
+	}
+}
+
 func TestEditorImageBlockDoesNotOverflowHeight(t *testing.T) {
 	old := imageDimensions
 	defer func() { imageDimensions = old }()

@@ -150,6 +150,21 @@ func wordLeftPos(content string, line, col int) (int, int) {
 	return line, pos
 }
 
+// atomicCol treats an image element line as a single atomic unit: if line is
+// an image element, col snaps to the near edge in the direction of travel
+// (0 when moving left, end-of-line when moving right) so the cursor never
+// rests inside the element's link text. Non-element lines pass col through
+// unchanged.
+func atomicCol(line string, col int, movingRight bool) int {
+	if _, ok := parseImageElement(line); !ok {
+		return col
+	}
+	if movingRight {
+		return len([]rune(line))
+	}
+	return 0
+}
+
 func wordRightPos(content string, line, col int) (int, int) {
 	lines := strings.Split(content, "\n")
 	runes := []rune(lines[line])
@@ -313,10 +328,24 @@ func (e *SelectableEditor) moveTo(line, col int) {
 
 func (e *SelectableEditor) moveCursorLeft() {
 	e.Model, _ = e.Model.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	lines := strings.Split(e.Value(), "\n")
+	if e.Line() < len(lines) {
+		newCol := atomicCol(lines[e.Line()], e.cursorCol(), false)
+		if newCol != e.cursorCol() {
+			e.moveTo(e.Line(), newCol)
+		}
+	}
 }
 
 func (e *SelectableEditor) moveCursorRight() {
 	e.Model, _ = e.Model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	lines := strings.Split(e.Value(), "\n")
+	if e.Line() < len(lines) {
+		newCol := atomicCol(lines[e.Line()], e.cursorCol(), true)
+		if newCol != e.cursorCol() {
+			e.moveTo(e.Line(), newCol)
+		}
+	}
 }
 
 func (e *SelectableEditor) moveCursorUp() {
