@@ -26,6 +26,19 @@ type SelectableEditor struct {
 	mouseDragging bool
 	visualYOffset int // mirrors textarea's internal viewport YOffset for click mapping
 	history       editHistory
+
+	imgReg      *imageRegistry
+	kittyImages bool
+	noteDir     string
+}
+
+// SetImageContext wires the registry, terminal capability, and base
+// directory needed to render image elements (see parseImageElement,
+// renderImageElement) inline during render().
+func (e *SelectableEditor) SetImageContext(reg *imageRegistry, kitty bool, noteDir string) {
+	e.imgReg = reg
+	e.kittyImages = kitty
+	e.noteDir = noteDir
 }
 
 // --- Pure helper functions ---
@@ -652,6 +665,26 @@ func (e SelectableEditor) render() string {
 
 	for i := e.visualYOffset; i < endIdx; i++ {
 		r := rows[i]
+
+		if r.startCol == 0 && r.line < len(lines) {
+			if target, ok := parseImageElement(lines[r.line]); ok && e.imgReg != nil {
+				imgLines, _ := renderImageElement(e.imgReg, e.kittyImages, e.noteDir, target, wrapWidth)
+				pad := strings.Repeat(" ", numWidth)
+				for _, il := range imgLines {
+					b.WriteString(lineNumberStyle.Render(pad))
+					b.WriteString(" ")
+					b.WriteString(il)
+					b.WriteString("\n")
+					drawnRows++
+				}
+				// Skip any remaining wrap rows belonging to this logical line.
+				for i+1 < endIdx && rows[i+1].line == r.line {
+					i++
+				}
+				continue
+			}
+		}
+
 		if r.startCol == 0 {
 			b.WriteString(lineNumberStyle.Render(fmt.Sprintf("%*d", numWidth, r.line+1)))
 		} else {

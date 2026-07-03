@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -662,5 +663,19 @@ func TestFindReplaceIsUndoableAsOp(t *testing.T) {
 	}
 	if m.editor.Value() != "foo bar foo" {
 		t.Fatalf("after undo, Value = %q", m.editor.Value())
+	}
+}
+
+func TestEditorRendersImageChip(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 40, 10)
+	e.SetImageContext(newImageRegistry(), false, t.TempDir())
+	e.SetValue("before\n![](assets/pic.png)\nafter")
+	out := e.render()
+	if !strings.Contains(out, "🖼 image (pic.png)") {
+		t.Errorf("editor did not render image chip:\n%s", out)
+	}
+	if strings.Contains(out, "assets/pic.png)") {
+		t.Errorf("editor leaked raw link text:\n%s", out)
 	}
 }

@@ -128,6 +128,7 @@ type model struct {
 	errMsg string
 
 	kittyImages bool
+	imgReg      *imageRegistry
 
 	fileClip      fileClipboard
 	autoSaveFlash bool
@@ -308,6 +309,7 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 		templateNameInput:        tn,
 		inboxPath:                inboxPath,
 		kittyImages:              detectKittyGraphics(os.Getenv),
+		imgReg:                   newImageRegistry(),
 	}
 
 	root, err := buildTree(vault)
@@ -326,6 +328,19 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 
 func (m model) isDirty() bool {
 	return m.editor.Value() != m.cleanContent
+}
+
+// currentNoteDir returns the directory image links in the open note should
+// be resolved against: the open file's directory, the target directory of an
+// unsaved new note, or the vault root as a last resort.
+func (m *model) currentNoteDir() string {
+	if m.currentFile != "" {
+		return filepath.Dir(m.currentFile)
+	}
+	if m.newNoteDir != "" {
+		return m.newNoteDir
+	}
+	return m.vault
 }
 
 // closePluginRun resets the shared plugin-run state and surfaces a status
@@ -1694,6 +1709,7 @@ func (m *model) openFile(path string) {
 	m.editorMode = modeEdit
 	m.tree.currentFile = path
 	m.errMsg = ""
+	m.editor.SetImageContext(m.imgReg, m.kittyImages, m.currentNoteDir())
 }
 
 func (m *model) previewSelectedFile() {
@@ -1741,6 +1757,7 @@ func (m *model) startNewNote() {
 	m.activePanel = editorPanel
 	m.editorMode = modeEdit
 	m.errMsg = ""
+	m.editor.SetImageContext(m.imgReg, m.kittyImages, m.currentNoteDir())
 }
 
 func (m *model) saveCurrentFile() {
@@ -1988,6 +2005,7 @@ func (m *model) recalcLayout() {
 	m.tree.clampOffset()
 
 	setEditorSize(&m.editor, m.editorWidth, m.editorHeight)
+	m.editor.SetImageContext(m.imgReg, m.kittyImages, m.currentNoteDir())
 
 	if m.chatOpen {
 		innerW := m.chatWidth - 4
