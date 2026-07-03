@@ -1,6 +1,13 @@
 package main
 
-import "strings"
+import (
+	"encoding/base64"
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/ansi/kitty"
+)
 
 // detectKittyGraphics reports whether the terminal supports the kitty graphics
 // protocol, based on environment hints. This is a heuristic that avoids a
@@ -64,4 +71,76 @@ func imageRenderSize(imgW, imgH, cellW, cellH, maxCols, maxRows int) (int, int) 
 		}
 	}
 	return cols, rows
+}
+
+// buildTransmitSequence returns a kitty graphics APC sequence that transmits
+// the given PNG data and creates a virtual placement (a=T,U=1) sized cols x
+// rows, chunked at kitty.MaxChunkSize bytes per the kitty graphics protocol.
+func buildTransmitSequence(id, cols, rows int, png []byte) string {
+	b64 := base64.StdEncoding.EncodeToString(png)
+	chunks := chunkString(b64, kitty.MaxChunkSize)
+	var sb strings.Builder
+	for i, chunk := range chunks {
+		var opts []string
+		if i == 0 {
+			o := kitty.Options{
+				Action:           kitty.TransmitAndPut,
+				Format:           kitty.PNG,
+				ID:               id,
+				Columns:          cols,
+				Rows:             rows,
+				VirtualPlacement: true,
+				Quite:            2,
+			}
+			opts = o.Options()
+		}
+		if len(chunks) > 1 {
+			if i == len(chunks)-1 {
+				opts = append(opts, "m=0")
+			} else {
+				opts = append(opts, "m=1")
+			}
+		}
+		sb.WriteString(ansi.KittyGraphics([]byte(chunk), opts...))
+	}
+	return sb.String()
+}
+
+// chunkString splits s into chunks of at most size bytes each.
+func chunkString(s string, size int) []string {
+	if size <= 0 || len(s) <= size {
+		return []string{s}
+	}
+	var out []string
+	for len(s) > size {
+		out = append(out, s[:size])
+		s = s[size:]
+	}
+	if len(s) > 0 {
+		out = append(out, s)
+	}
+	return out
+}
+
+// buildPlaceholderBlock returns one string per row of Unicode placeholder
+// cells encoding id (as a 24-bit foreground color) plus row/col diacritics,
+// per the kitty graphics protocol's Unicode placeholder scheme.
+func buildPlaceholderBlock(id, cols, rows int) []string {
+	r := byte((id >> 16) & 0xff)
+	g := byte((id >> 8) & 0xff)
+	b := byte(id & 0xff)
+	fg := fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
+	out := make([]string, 0, rows)
+	for row := 0; row < rows; row++ {
+		var sb strings.Builder
+		sb.WriteString(fg)
+		for col := 0; col < cols; col++ {
+			sb.WriteRune(kitty.Placeholder)
+			sb.WriteRune(kitty.Diacritic(row))
+			sb.WriteRune(kitty.Diacritic(col))
+		}
+		sb.WriteString("\x1b[39m")
+		out = append(out, sb.String())
+	}
+	return out
 }

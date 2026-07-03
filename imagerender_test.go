@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/x/ansi/kitty"
+)
 
 func TestDetectKittyGraphics(t *testing.T) {
 	env := func(m map[string]string) func(string) string {
@@ -40,5 +45,43 @@ func TestImageRenderSize(t *testing.T) {
 	c2, r2 := imageRenderSize(4, 8, 8, 16, 64, 12)
 	if c2 < 1 || r2 < 1 {
 		t.Errorf("tiny image => %dx%d, want >=1", c2, r2)
+	}
+}
+
+func TestBuildPlaceholderBlock(t *testing.T) {
+	rows := buildPlaceholderBlock(1, 2, 1)
+	if len(rows) != 1 {
+		t.Fatalf("want 1 row, got %d", len(rows))
+	}
+	line := rows[0]
+	// id=1 => 24-bit fg 0;0;1
+	if !strings.HasPrefix(line, "\x1b[38;2;0;0;1m") {
+		t.Errorf("missing fg color prefix: %q", line)
+	}
+	if !strings.HasSuffix(line, "\x1b[39m") {
+		t.Errorf("missing fg reset suffix: %q", line)
+	}
+	if strings.Count(line, string(kitty.Placeholder)) != 2 {
+		t.Errorf("want 2 placeholder cells, got %d", strings.Count(line, string(kitty.Placeholder)))
+	}
+	// First cell: placeholder + row diacritic(0) + col diacritic(0).
+	firstCell := string(kitty.Placeholder) + string(kitty.Diacritic(0)) + string(kitty.Diacritic(0))
+	if !strings.Contains(line, firstCell) {
+		t.Errorf("first cell encoding missing in %q", line)
+	}
+}
+
+func TestBuildTransmitSequenceSmall(t *testing.T) {
+	seq := buildTransmitSequence(7, 3, 2, []byte("PNG"))
+	if !strings.HasPrefix(seq, "\x1b_G") {
+		t.Errorf("not an APC _G sequence: %q", seq)
+	}
+	for _, want := range []string{"i=7", "U=1", "a=T", "f=100", "c=3", "r=2"} {
+		if !strings.Contains(seq, want) {
+			t.Errorf("transmit seq missing %q: %q", want, seq)
+		}
+	}
+	if !strings.HasSuffix(seq, "\x1b\\") {
+		t.Errorf("not terminated with ST: %q", seq)
 	}
 }
