@@ -127,6 +127,8 @@ type model struct {
 
 	errMsg string
 
+	kittyImages bool
+
 	fileClip      fileClipboard
 	autoSaveFlash bool
 
@@ -305,6 +307,7 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 		delegateInput:            del,
 		templateNameInput:        tn,
 		inboxPath:                inboxPath,
+		kittyImages:              detectKittyGraphics(os.Getenv),
 	}
 
 	root, err := buildTree(vault)
