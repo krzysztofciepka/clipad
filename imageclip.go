@@ -63,6 +63,10 @@ func probeIndicatesImage(env clipEnv, out []byte) bool {
 // currentClipEnv is a convenience wrapper over the real environment.
 func currentClipEnv() clipEnv { return detectClipEnv(os.Getenv) }
 
+// clipEnvForPaste is an indirection over currentClipEnv so tests can inject
+// a fixed environment for paste dispatch.
+var clipEnvForPaste = currentClipEnv
+
 var runCapture = func(name string, args ...string) ([]byte, error) {
 	return exec.Command(name, args...).Output()
 }

@@ -418,6 +418,17 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 	return nil
 }
 
+// InsertImageLink inserts link on its own line at the cursor, atomically
+// (undo-wrapped like Paste).
+func (e *SelectableEditor) InsertImageLink(link string) {
+	pre := e.recordOp()
+	// Ensure the element sits on its own line.
+	line := e.Value()
+	_ = line
+	e.InsertString("\n" + link + "\n")
+	e.commitOp(pre)
+}
+
 // syncVisualYOffset mirrors bubbles' repositionView: keeps visualYOffset
 // such that the cursor's visual row stays within [visualYOffset,
 // visualYOffset+height). Call after any cursor movement so click

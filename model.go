@@ -343,6 +343,34 @@ func (m *model) currentNoteDir() string {
 	return m.vault
 }
 
+// pasteImageOrText handles Ctrl+V in the editor: if the clipboard holds an
+// image, it saves the image as an asset and inserts a markdown link to it;
+// otherwise it falls back to a normal text paste.
+func (m *model) pasteImageOrText() tea.Cmd {
+	env := clipEnvForPaste()
+	if env != clipNone && clipboardHasImage(env) {
+		if !imageToolAvailable(env) {
+			m.errMsg = "install wl-clipboard or xclip to paste images"
+			return nil
+		}
+		data, err := readClipboardImage(env)
+		if err != nil || len(data) == 0 {
+			m.errMsg = "could not read clipboard image"
+			return nil
+		}
+		date := time.Now().Format("2006-01-02")
+		abs, err := saveAsset(m.vault, data, date)
+		if err != nil {
+			m.errMsg = "could not save image: " + err.Error()
+			return nil
+		}
+		rel := assetRelPath(m.currentNoteDir(), abs)
+		m.editor.InsertImageLink("![](" + rel + ")")
+		return nil
+	}
+	return m.editor.Paste()
+}
+
 // closePluginRun resets the shared plugin-run state and surfaces a status
 // message. Used to dismiss diff/review modes uniformly.
 func (m *model) closePluginRun(msg string) {
@@ -724,7 +752,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == editorPanel && m.editorMode == modeEdit {
-				cmd := m.editor.Paste()
+				cmd := m.pasteImageOrText()
 				return m, cmd
 			}
 			return m, nil
