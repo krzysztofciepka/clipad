@@ -343,6 +343,32 @@ func (m *model) currentNoteDir() string {
 	return m.vault
 }
 
+// copyImageElement handles Ctrl+C/Ctrl+X on a lone image element: it reads
+// the asset bytes off disk and writes them to the system clipboard as an
+// image (so they round-trip into other apps and back into clipad). On cut,
+// it also deletes the element's line. Returns false if it could not handle
+// the copy (e.g. no clipboard image tool available), so the caller can fall
+// back to a normal text copy/cut.
+func (m *model) copyImageElement(target string, cut bool) bool {
+	env := clipEnvForPaste()
+	if env == clipNone || !imageToolAvailable(env) {
+		return false
+	}
+	abs := resolveAssetPath(m.currentNoteDir(), target)
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return false
+	}
+	if err := writeClipboardImage(env, data); err != nil {
+		return false
+	}
+	if cut {
+		m.editor.DeleteCurrentLine()
+	}
+	m.errMsg = "Copied image to clipboard"
+	return true
+}
+
 // pasteImageOrText handles Ctrl+V in the editor: if the clipboard holds an
 // image, it saves the image as an asset and inserts a markdown link to it;
 // otherwise it falls back to a normal text paste.
@@ -725,6 +751,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == editorPanel && m.editorMode == modeEdit {
+				if target, ok := m.editor.LoneImageElement(); ok {
+					if m.copyImageElement(target, false) {
+						return m, nil
+					}
+				}
 				m.editor.Copy()
 			}
 			return m, nil
@@ -740,6 +771,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == editorPanel && m.editorMode == modeEdit {
+				if target, ok := m.editor.LoneImageElement(); ok {
+					if m.copyImageElement(target, true) {
+						return m, nil
+					}
+				}
 				m.editor.Cut()
 			}
 			return m, nil

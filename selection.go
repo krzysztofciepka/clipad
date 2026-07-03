@@ -418,6 +418,50 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 	return nil
 }
 
+// LoneImageElement reports whether the cursor's current line is an image
+// element and there is no active multi-line selection (a selection confined
+// to that single line still counts as lone). Returns the element's target
+// path when true.
+func (e *SelectableEditor) LoneImageElement() (string, bool) {
+	lines := strings.Split(e.Value(), "\n")
+	cur := e.Line()
+	if cur < 0 || cur >= len(lines) {
+		return "", false
+	}
+	// A lone element: either no active selection, or the selection covers
+	// exactly this one line.
+	if e.selActive {
+		sL, _, eL, _ := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+		if sL != eL {
+			return "", false
+		}
+	}
+	return parseImageElement(lines[cur])
+}
+
+// DeleteCurrentLine removes the cursor's current line, undo-wrapped. At
+// least one (possibly empty) line always remains.
+func (e *SelectableEditor) DeleteCurrentLine() {
+	pre := e.recordOp()
+	lines := strings.Split(e.Value(), "\n")
+	cur := e.Line()
+	if cur < 0 || cur >= len(lines) {
+		return
+	}
+	lines = append(lines[:cur], lines[cur+1:]...)
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	e.SetValue(strings.Join(lines, "\n"))
+	target := cur
+	if target >= len(lines) {
+		target = len(lines) - 1
+	}
+	e.moveTo(target, 0)
+	e.selActive = false
+	e.commitOp(pre)
+}
+
 // InsertImageLink inserts link on its own line at the cursor, atomically
 // (undo-wrapped like Paste). If a selection is active, it is replaced first,
 // mirroring Paste().
