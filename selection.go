@@ -41,6 +41,18 @@ func (e *SelectableEditor) SetImageContext(reg *imageRegistry, kitty bool, noteD
 	e.noteDir = noteDir
 }
 
+// imageLayout returns the layout context describing how image elements
+// occupy visual rows in this editor, or nil when no image context is wired
+// (in which case image lines lay out as ordinary text). The renderer, the
+// click mapping, and the scroll offset all share it so they agree on how
+// tall each line is.
+func (e *SelectableEditor) imageLayout() *imageLayout {
+	if e.imgReg == nil {
+		return nil
+	}
+	return &imageLayout{reg: e.imgReg, kitty: e.kittyImages, noteDir: e.noteDir}
+}
+
 // --- Pure helper functions ---
 
 func isWordChar(r rune) bool {
@@ -485,7 +497,7 @@ func (e *SelectableEditor) InsertImageLink(link string) {
 // translation stays in sync with the textarea's internal scroll.
 func (e *SelectableEditor) syncVisualYOffset() {
 	wrapWidth := e.Width()
-	row := cursorVisualRow(e.Value(), e.Line(), e.cursorCol(), wrapWidth)
+	row := cursorVisualRow(e.Value(), e.Line(), e.cursorCol(), wrapWidth, e.imageLayout())
 	if row < e.visualYOffset {
 		e.visualYOffset = row
 	}
@@ -764,7 +776,7 @@ func (e SelectableEditor) render() string {
 		numWidth = 2
 	}
 
-	rows := wrapContent(content, wrapWidth)
+	rows := wrapContent(content, wrapWidth, e.imageLayout())
 
 	var b strings.Builder
 	endIdx := e.visualYOffset + height
@@ -779,9 +791,11 @@ func (e SelectableEditor) render() string {
 		}
 		r := rows[i]
 
-		if r.startCol == 0 && r.line < len(lines) {
-			if target, ok := parseImageElement(lines[r.line]); ok && e.imgReg != nil {
-				imgLines, _ := renderImageElement(e.imgReg, e.kittyImages, e.noteDir, target, wrapWidth)
+		if r.image && r.line < len(lines) {
+			if target, ok := parseImageElement(lines[r.line]); ok {
+				// r.imgRow is non-zero when the top of the block has
+				// scrolled off, so only the visible remainder is drawn.
+				imgLines, _ := renderImageElementFrom(e.imgReg, e.kittyImages, e.noteDir, target, wrapWidth, r.imgRow)
 				remaining := height - drawnRows
 				if remaining <= 0 {
 					imgLines = nil

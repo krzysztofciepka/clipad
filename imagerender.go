@@ -154,11 +154,36 @@ func buildPlaceholderBlock(id, cols, rows int) []string {
 type imageRegistry struct {
 	ids         map[string]int
 	transmitted map[string]bool
+	dims        map[string][2]int
 	nextID      int
 }
 
 func newImageRegistry() *imageRegistry {
-	return &imageRegistry{ids: map[string]int{}, transmitted: map[string]bool{}, nextID: 1}
+	return &imageRegistry{
+		ids:         map[string]int{},
+		transmitted: map[string]bool{},
+		dims:        map[string][2]int{},
+		nextID:      1,
+	}
+}
+
+// dimensionsFor returns the pixel size of the image at abs, caching successful
+// decodes for the session. The layout sizes every image element on every
+// keystroke, so without this an image-heavy note re-reads each file from disk
+// several times per frame. Assets are content-addressed, so a cached path
+// keeps its dimensions; a hand-written link to a file edited in place outside
+// clipad keeps its old size until restart, matching how the transmit-once
+// bookkeeping already behaves.
+func (r *imageRegistry) dimensionsFor(abs string) (int, int, error) {
+	if wh, ok := r.dims[abs]; ok {
+		return wh[0], wh[1], nil
+	}
+	w, h, err := imageDimensions(abs)
+	if err != nil {
+		return 0, 0, err
+	}
+	r.dims[abs] = [2]int{w, h}
+	return w, h, nil
 }
 
 func (r *imageRegistry) idFor(hash string) int {
@@ -200,30 +225,68 @@ func imageChip(target string) string {
 	return "🖼 image (" + filepath.Base(target) + ")"
 }
 
+// imageBlockSize returns the cell dimensions an image element occupies and
+// whether the kitty path applies (false means the one-line chip fallback).
+// It reads only cached/decoded image headers and never consumes the
+// registry's transmit-once flag, so the layout can size a block without
+// affecting what the renderer later emits.
+func imageBlockSize(reg *imageRegistry, kittyOK bool, noteDir, target string, maxCols int) (cols, rows int, ok bool) {
+	if !kittyOK {
+		return 0, 1, false
+	}
+	abs := resolveAssetPath(noteDir, target)
+	var (
+		w, h int
+		err  error
+	)
+	if reg != nil {
+		w, h, err = reg.dimensionsFor(abs)
+	} else {
+		w, h, err = imageDimensions(abs)
+	}
+	if err != nil {
+		return 0, 1, false
+	}
+	if maxCols > maxImageCols {
+		maxCols = maxImageCols
+	}
+	cols, rows = imageRenderSize(w, h, defaultCellW, defaultCellH, maxCols, maxImageRows)
+	return cols, rows, true
+}
+
 // renderImageElement returns the display rows for an image-element line and
 // how many terminal rows they occupy. On the kitty path it returns
 // placeholder rows (the first row prefixed with the transmit sequence the
 // first time the asset is rendered in this session). On the fallback path it
 // returns a single chip row.
 func renderImageElement(reg *imageRegistry, kittyOK bool, noteDir, target string, maxCols int) ([]string, int) {
-	if !kittyOK {
+	return renderImageElementFrom(reg, kittyOK, noteDir, target, maxCols, 0)
+}
+
+// renderImageElementFrom is renderImageElement starting at block row `from`,
+// used when the top of an image block has scrolled off the editor viewport.
+// The transmit sequence stays attached to the first row actually returned,
+// so a partially scrolled image is still transmitted rather than rendering
+// as blank placeholder cells.
+func renderImageElementFrom(reg *imageRegistry, kittyOK bool, noteDir, target string, maxCols, from int) ([]string, int) {
+	cols, rows, ok := imageBlockSize(reg, kittyOK, noteDir, target, maxCols)
+	if !ok {
+		if from > 0 {
+			return nil, 0
+		}
 		return []string{imageChip(target)}, 1
 	}
 	abs := resolveAssetPath(noteDir, target)
-	w, h, derr := imageDimensions(abs)
-	if derr != nil {
-		return []string{imageChip(target)}, 1
-	}
-	if maxCols > maxImageCols {
-		maxCols = maxImageCols
-	}
-	cols, rows := imageRenderSize(w, h, defaultCellW, defaultCellH, maxCols, maxImageRows)
 	data, _ := os.ReadFile(abs)     // best-effort; dimensions already validated above
 	hash := assetFilename(data, "") // stable per content; date irrelevant for keying
 	id := reg.idFor(hash)
 	block := buildPlaceholderBlock(id, cols, rows)
+	if from >= len(block) {
+		return nil, 0
+	}
+	block = block[from:]
 	if reg.markTransmitted(hash) {
 		block[0] = buildTransmitSequence(id, cols, rows, data) + block[0]
 	}
-	return block, rows
+	return block, len(block)
 }

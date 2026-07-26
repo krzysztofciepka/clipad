@@ -55,9 +55,20 @@ func editorNumWidth(content string) int {
 
 // wrapRow describes one visual row in a wrapped view of the content.
 type wrapRow struct {
-	line     int // logical line index
-	startCol int // first column (rune index) of this wrap row within the line
-	length   int // number of runes on this wrap row
+	line     int  // logical line index
+	startCol int  // first column (rune index) of this wrap row within the line
+	length   int  // number of runes on this wrap row
+	image    bool // this row is part of an image element's rendered block
+	imgRow   int  // row index within that block (0-based); only set when image
+}
+
+// imageLayout carries what the visual-row layout needs to account for image
+// elements. A nil *imageLayout means image elements are laid out as ordinary
+// text lines, which is what every non-editor caller wants.
+type imageLayout struct {
+	reg     *imageRegistry
+	kitty   bool
+	noteDir string
 }
 
 // wrapLineStarts returns the rune indices where a line soft-wraps. Greedy
@@ -90,10 +101,25 @@ func wrapLineStarts(runes []rune, width int) []int {
 // wrapContent builds the visual-row layout for content at wrapWidth. Both
 // the renderer and the click translation derive their positions from this,
 // so they stay in sync regardless of the wrap rule used.
-func wrapContent(content string, wrapWidth int) []wrapRow {
+//
+// When img is non-nil, an image-element line expands to the number of rows
+// its rendered block actually occupies (many rows under kitty, one for the
+// chip fallback) instead of wrapping as link text. Without this the renderer
+// and the click/scroll mapping disagree about how tall the line is, and
+// clicks below an image land on the wrong logical line.
+func wrapContent(content string, wrapWidth int, img *imageLayout) []wrapRow {
 	lines := strings.Split(content, "\n")
 	var rows []wrapRow
 	for li, ln := range lines {
+		if img != nil && img.reg != nil {
+			if target, ok := parseImageElement(ln); ok {
+				_, n, _ := imageBlockSize(img.reg, img.kitty, img.noteDir, target, wrapWidth)
+				for k := 0; k < n; k++ {
+					rows = append(rows, wrapRow{line: li, image: true, imgRow: k})
+				}
+				continue
+			}
+		}
 		runes := []rune(ln)
 		if len(runes) == 0 {
 			rows = append(rows, wrapRow{line: li})
@@ -115,12 +141,17 @@ func wrapContent(content string, wrapWidth int) []wrapRow {
 }
 
 // cursorVisualRow returns the visual-row index of a cursor at logical
-// (line, col) in the wrapped layout.
-func cursorVisualRow(content string, line, col, wrapWidth int) int {
-	rows := wrapContent(content, wrapWidth)
+// (line, col) in the wrapped layout. A cursor anywhere on an image element
+// resolves to the top row of its block: the element is atomic, and scrolling
+// to its top is what keeps the image itself on screen.
+func cursorVisualRow(content string, line, col, wrapWidth int, img *imageLayout) int {
+	rows := wrapContent(content, wrapWidth, img)
 	for i, r := range rows {
 		if r.line != line {
 			continue
+		}
+		if r.image {
+			return i
 		}
 		// last wrap row of this line absorbs col == startCol+length
 		isLastOfLine := i == len(rows)-1 || rows[i+1].line != line
@@ -139,8 +170,8 @@ func cursorVisualRow(content string, line, col, wrapWidth int) int {
 // left padding, the line-number column plus its trailing space, the
 // textarea's visual scroll offset, and the wrap layout produced by
 // wrapContent.
-func mousePosToEditorCursor(content string, visualYOffset, localX, localY, numWidth, wrapWidth int) (line, col int) {
-	rows := wrapContent(content, wrapWidth)
+func mousePosToEditorCursor(content string, visualYOffset, localX, localY, numWidth, wrapWidth int, img *imageLayout) (line, col int) {
+	rows := wrapContent(content, wrapWidth, img)
 	if len(rows) == 0 {
 		return 0, 0
 	}
@@ -177,7 +208,7 @@ func handleEditorMouse(m model, localX, localY int, msg tea.MouseMsg) (tea.Model
 	case tea.MouseButtonLeft:
 		numWidth := editorNumWidth(m.editor.Value())
 		wrapWidth := m.editor.Width()
-		line, col := mousePosToEditorCursor(m.editor.Value(), m.editor.visualYOffset, localX, localY, numWidth, wrapWidth)
+		line, col := mousePosToEditorCursor(m.editor.Value(), m.editor.visualYOffset, localX, localY, numWidth, wrapWidth, m.editor.imageLayout())
 		switch msg.Action {
 		case tea.MouseActionPress:
 			m.activePanel = editorPanel
