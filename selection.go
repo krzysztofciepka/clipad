@@ -26,6 +26,31 @@ type SelectableEditor struct {
 	mouseDragging bool
 	visualYOffset int // mirrors textarea's internal viewport YOffset for click mapping
 	history       editHistory
+
+	imgReg      *imageRegistry
+	kittyImages bool
+	noteDir     string
+}
+
+// SetImageContext wires the registry, terminal capability, and base
+// directory needed to render image elements (see parseImageElement,
+// renderImageElement) inline during render().
+func (e *SelectableEditor) SetImageContext(reg *imageRegistry, kitty bool, noteDir string) {
+	e.imgReg = reg
+	e.kittyImages = kitty
+	e.noteDir = noteDir
+}
+
+// imageLayout returns the layout context describing how image elements
+// occupy visual rows in this editor, or nil when no image context is wired
+// (in which case image lines lay out as ordinary text). The renderer, the
+// click mapping, and the scroll offset all share it so they agree on how
+// tall each line is.
+func (e *SelectableEditor) imageLayout() *imageLayout {
+	if e.imgReg == nil {
+		return nil
+	}
+	return &imageLayout{reg: e.imgReg, kitty: e.kittyImages, noteDir: e.noteDir}
 }
 
 // --- Pure helper functions ---
@@ -135,6 +160,21 @@ func wordLeftPos(content string, line, col int) (int, int) {
 		}
 	}
 	return line, pos
+}
+
+// atomicCol treats an image element line as a single atomic unit: if line is
+// an image element, col snaps to the near edge in the direction of travel
+// (0 when moving left, end-of-line when moving right) so the cursor never
+// rests inside the element's link text. Non-element lines pass col through
+// unchanged.
+func atomicCol(line string, col int, movingRight bool) int {
+	if _, ok := parseImageElement(line); !ok {
+		return col
+	}
+	if movingRight {
+		return len([]rune(line))
+	}
+	return 0
 }
 
 func wordRightPos(content string, line, col int) (int, int) {
@@ -300,10 +340,24 @@ func (e *SelectableEditor) moveTo(line, col int) {
 
 func (e *SelectableEditor) moveCursorLeft() {
 	e.Model, _ = e.Model.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	lines := strings.Split(e.Value(), "\n")
+	if e.Line() < len(lines) {
+		newCol := atomicCol(lines[e.Line()], e.cursorCol(), false)
+		if newCol != e.cursorCol() {
+			e.moveTo(e.Line(), newCol)
+		}
+	}
 }
 
 func (e *SelectableEditor) moveCursorRight() {
 	e.Model, _ = e.Model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	lines := strings.Split(e.Value(), "\n")
+	if e.Line() < len(lines) {
+		newCol := atomicCol(lines[e.Line()], e.cursorCol(), true)
+		if newCol != e.cursorCol() {
+			e.moveTo(e.Line(), newCol)
+		}
+	}
 }
 
 func (e *SelectableEditor) moveCursorUp() {
@@ -376,13 +430,74 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 	return nil
 }
 
+// LoneImageElement reports whether the cursor's current line is an image
+// element and there is no active multi-line selection (a selection confined
+// to that single line still counts as lone). Returns the element's target
+// path when true.
+func (e *SelectableEditor) LoneImageElement() (string, bool) {
+	lines := strings.Split(e.Value(), "\n")
+	cur := e.Line()
+	if cur < 0 || cur >= len(lines) {
+		return "", false
+	}
+	// A lone element: either no active selection, or the selection covers
+	// exactly this one line.
+	if e.selActive {
+		sL, _, eL, _ := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+		if sL != eL {
+			return "", false
+		}
+	}
+	return parseImageElement(lines[cur])
+}
+
+// DeleteCurrentLine removes the cursor's current line, undo-wrapped. At
+// least one (possibly empty) line always remains.
+func (e *SelectableEditor) DeleteCurrentLine() {
+	pre := e.recordOp()
+	lines := strings.Split(e.Value(), "\n")
+	cur := e.Line()
+	if cur < 0 || cur >= len(lines) {
+		return
+	}
+	lines = append(lines[:cur], lines[cur+1:]...)
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	e.SetValue(strings.Join(lines, "\n"))
+	target := cur
+	if target >= len(lines) {
+		target = len(lines) - 1
+	}
+	e.moveTo(target, 0)
+	e.selActive = false
+	e.commitOp(pre)
+}
+
+// InsertImageLink inserts link on its own line at the cursor, atomically
+// (undo-wrapped like Paste). If a selection is active, it is replaced first,
+// mirroring Paste().
+func (e *SelectableEditor) InsertImageLink(link string) {
+	pre := e.recordOp()
+	if e.selActive {
+		sL, sC, eL, eC := selectionRange(e.selAnchorLine, e.selAnchorCol, e.Line(), e.cursorCol())
+		newContent := deleteText(e.Value(), sL, sC, eL, eC)
+		e.SetValue(newContent)
+		e.moveTo(sL, sC)
+		e.selActive = false
+	}
+	// Ensure the element sits on its own line.
+	e.InsertString("\n" + link + "\n")
+	e.commitOp(pre)
+}
+
 // syncVisualYOffset mirrors bubbles' repositionView: keeps visualYOffset
 // such that the cursor's visual row stays within [visualYOffset,
 // visualYOffset+height). Call after any cursor movement so click
 // translation stays in sync with the textarea's internal scroll.
 func (e *SelectableEditor) syncVisualYOffset() {
 	wrapWidth := e.Width()
-	row := cursorVisualRow(e.Value(), e.Line(), e.cursorCol(), wrapWidth)
+	row := cursorVisualRow(e.Value(), e.Line(), e.cursorCol(), wrapWidth, e.imageLayout())
 	if row < e.visualYOffset {
 		e.visualYOffset = row
 	}
@@ -417,6 +532,22 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "ctrl+shift+z", "ctrl+y":
 		e.Redo()
+		return nil
+	case "left":
+		if e.selActive {
+			e.ClearSelection()
+		}
+		e.moveCursorLeft()
+		e.adjustViewOffset()
+		e.noteMovement()
+		return nil
+	case "right":
+		if e.selActive {
+			e.ClearSelection()
+		}
+		e.moveCursorRight()
+		e.adjustViewOffset()
+		e.noteMovement()
 		return nil
 	case "shift+left":
 		e.startSelectionIfNeeded()
@@ -481,6 +612,10 @@ func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	case "backspace", "delete":
 		if e.selActive {
 			e.DeleteSelection()
+			return nil
+		}
+		if _, ok := e.LoneImageElement(); ok {
+			e.DeleteCurrentLine()
 			return nil
 		}
 		pre := e.snapshotNow()
@@ -641,7 +776,7 @@ func (e SelectableEditor) render() string {
 		numWidth = 2
 	}
 
-	rows := wrapContent(content, wrapWidth)
+	rows := wrapContent(content, wrapWidth, e.imageLayout())
 
 	var b strings.Builder
 	endIdx := e.visualYOffset + height
@@ -651,7 +786,38 @@ func (e SelectableEditor) render() string {
 	drawnRows := 0
 
 	for i := e.visualYOffset; i < endIdx; i++ {
+		if drawnRows >= height {
+			break
+		}
 		r := rows[i]
+
+		if r.image && r.line < len(lines) {
+			if target, ok := parseImageElement(lines[r.line]); ok {
+				// r.imgRow is non-zero when the top of the block has
+				// scrolled off, so only the visible remainder is drawn.
+				imgLines, _ := renderImageElementFrom(e.imgReg, e.kittyImages, e.noteDir, target, wrapWidth, r.imgRow)
+				remaining := height - drawnRows
+				if remaining <= 0 {
+					imgLines = nil
+				} else if len(imgLines) > remaining {
+					imgLines = imgLines[:remaining]
+				}
+				pad := strings.Repeat(" ", numWidth)
+				for _, il := range imgLines {
+					b.WriteString(lineNumberStyle.Render(pad))
+					b.WriteString(" ")
+					b.WriteString(il)
+					b.WriteString("\n")
+					drawnRows++
+				}
+				// Skip any remaining wrap rows belonging to this logical line.
+				for i+1 < endIdx && rows[i+1].line == r.line {
+					i++
+				}
+				continue
+			}
+		}
+
 		if r.startCol == 0 {
 			b.WriteString(lineNumberStyle.Render(fmt.Sprintf("%*d", numWidth, r.line+1)))
 		} else {

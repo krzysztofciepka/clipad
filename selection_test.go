@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -662,5 +663,109 @@ func TestFindReplaceIsUndoableAsOp(t *testing.T) {
 	}
 	if m.editor.Value() != "foo bar foo" {
 		t.Fatalf("after undo, Value = %q", m.editor.Value())
+	}
+}
+
+func TestEditorRendersImageChip(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 40, 10)
+	e.SetImageContext(newImageRegistry(), false, t.TempDir())
+	e.SetValue("before\n![](assets/pic.png)\nafter")
+	out := e.render()
+	if !strings.Contains(out, "🖼 image (pic.png)") {
+		t.Errorf("editor did not render image chip:\n%s", out)
+	}
+	if strings.Contains(out, "assets/pic.png)") {
+		t.Errorf("editor leaked raw link text:\n%s", out)
+	}
+}
+
+func TestAtomicCol(t *testing.T) {
+	line := "![](assets/pic.png)"
+	n := len([]rune(line))
+	if atomicCol(line, 5, true) != n {
+		t.Errorf("moving right into element should snap to end")
+	}
+	if atomicCol(line, 5, false) != 0 {
+		t.Errorf("moving left into element should snap to start")
+	}
+	if atomicCol("plain text", 3, true) != 3 {
+		t.Errorf("non-element column should be unchanged")
+	}
+}
+
+func TestPlainArrowSnapsAcrossImageElement(t *testing.T) {
+	imgLine := "![](assets/pic.png)"
+	fullLen := len([]rune(imgLine))
+
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetImageContext(newImageRegistry(), false, t.TempDir())
+	e.SetValue("before\n" + imgLine + "\nafter")
+
+	e.moveTo(0, len([]rune("before")))
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyRight})
+	if e.Line() != 1 || e.cursorCol() != fullLen {
+		t.Errorf("after Right across image element: line=%d col=%d, want line=1 col=%d (snapped to end)",
+			e.Line(), e.cursorCol(), fullLen)
+	}
+
+	e2 := newSelectableEditor()
+	setEditorSize(&e2, 80, 10)
+	e2.SetImageContext(newImageRegistry(), false, t.TempDir())
+	e2.SetValue("before\n" + imgLine + "\nafter")
+
+	e2.moveTo(2, 0)
+	e2.HandleKey(tea.KeyMsg{Type: tea.KeyLeft})
+	if e2.Line() != 1 || e2.cursorCol() != 0 {
+		t.Errorf("after Left across image element: line=%d col=%d, want line=1 col=0 (snapped to start)",
+			e2.Line(), e2.cursorCol())
+	}
+}
+
+func TestBackspaceDeletesImageElement(t *testing.T) {
+	e := newSelectableEditor()
+	setEditorSize(&e, 80, 10)
+	e.SetImageContext(newImageRegistry(), false, t.TempDir())
+	e.SetValue("before\n![](assets/pic.png)\nafter")
+
+	e.moveTo(1, 0)
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+
+	for _, ln := range strings.Split(e.Value(), "\n") {
+		if _, ok := parseImageElement(ln); ok {
+			t.Fatalf("image element still present after backspace: %q", e.Value())
+		}
+	}
+	if strings.Contains(e.Value(), "assets/pic.png") {
+		t.Fatalf("value still contains asset path after backspace: %q", e.Value())
+	}
+	if e.Value() != "before\nafter" {
+		t.Fatalf("Value = %q, want %q", e.Value(), "before\nafter")
+	}
+
+	if !e.Undo() {
+		t.Fatal("Undo should succeed after backspace-deletes-image-element")
+	}
+	if e.Value() != "before\n![](assets/pic.png)\nafter" {
+		t.Fatalf("after undo, Value = %q", e.Value())
+	}
+}
+
+func TestEditorImageBlockDoesNotOverflowHeight(t *testing.T) {
+	old := imageDimensions
+	defer func() { imageDimensions = old }()
+	imageDimensions = func(path string) (int, int, error) { return 160, 320, nil }
+
+	e := newSelectableEditor()
+	height := 10
+	setEditorSize(&e, 40, height)
+	e.SetImageContext(newImageRegistry(), true, t.TempDir())
+	e.SetValue("line1\nline2\nline3\nline4\nline5\nline6\nline7\n![](assets/pic.png)\ntrailing")
+	out := e.render()
+
+	rows := strings.Count(out, "\n") + 1
+	if rows > height {
+		t.Errorf("render emitted %d visual rows, want <= height %d:\n%s", rows, height, out)
 	}
 }

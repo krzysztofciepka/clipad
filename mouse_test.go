@@ -69,7 +69,7 @@ func TestMousePosToEditorCursor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			line, col := mousePosToEditorCursor(content, tt.visualYOffset, tt.localX, tt.localY, tt.numWidth, tt.wrapWidth)
+			line, col := mousePosToEditorCursor(content, tt.visualYOffset, tt.localX, tt.localY, tt.numWidth, tt.wrapWidth, nil)
 			if line != tt.wantLine || col != tt.wantCol {
 				t.Errorf("got (%d,%d), want (%d,%d)", line, col, tt.wantLine, tt.wantCol)
 			}
@@ -102,7 +102,7 @@ func TestMousePosToEditorCursor_Wrapping(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			line, col := mousePosToEditorCursor(content, tt.visualYOffset, tt.localX, tt.localY, tt.numWidth, tt.wrapWidth)
+			line, col := mousePosToEditorCursor(content, tt.visualYOffset, tt.localX, tt.localY, tt.numWidth, tt.wrapWidth, nil)
 			if line != tt.wantLine || col != tt.wantCol {
 				t.Errorf("got (%d,%d), want (%d,%d)", line, col, tt.wantLine, tt.wantCol)
 			}
@@ -111,7 +111,7 @@ func TestMousePosToEditorCursor_Wrapping(t *testing.T) {
 }
 
 func TestWrapContent_NoWrappingWhenFits(t *testing.T) {
-	rows := wrapContent("hello\nworld", 20)
+	rows := wrapContent("hello\nworld", 20, nil)
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d, want 2", len(rows))
 	}
@@ -128,7 +128,7 @@ func TestWrapContent_WordWrap(t *testing.T) {
 	// the last space inside the 10-rune window, so:
 	//   row 0: "aaaa bbbb " (10 runes, ends after the space at idx 9)
 	//   row 1: "cccc dddd" (9 runes)
-	rows := wrapContent("aaaa bbbb cccc dddd", 10)
+	rows := wrapContent("aaaa bbbb cccc dddd", 10, nil)
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d, want 2", len(rows))
 	}
@@ -142,7 +142,7 @@ func TestWrapContent_WordWrap(t *testing.T) {
 
 func TestWrapContent_HardBreakLongWord(t *testing.T) {
 	// 25-char word with no spaces → char breaks at wrapWidth.
-	rows := wrapContent(strings.Repeat("a", 25), 10)
+	rows := wrapContent(strings.Repeat("a", 25), 10, nil)
 	if len(rows) != 3 {
 		t.Fatalf("rows = %d, want 3", len(rows))
 	}
@@ -158,7 +158,7 @@ func TestWrapContent_HardBreakLongWord(t *testing.T) {
 }
 
 func TestWrapContent_EmptyLinesKeptAsOneRow(t *testing.T) {
-	rows := wrapContent("a\n\nb", 10)
+	rows := wrapContent("a\n\nb", 10, nil)
 	if len(rows) != 3 {
 		t.Fatalf("rows = %d, want 3", len(rows))
 	}

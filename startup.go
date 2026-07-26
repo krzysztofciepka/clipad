@@ -92,7 +92,7 @@ func (m *model) applyStartup() tea.Cmd {
 		m.openFile(m.startup.path)
 		if m.startup.preview {
 			// Render Markdown (same as Ctrl+P / togglePreview), not raw text.
-			vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight)
+			vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight, m.imgReg, m.kittyImages, m.currentNoteDir())
 			if err != nil {
 				// Fall back to edit mode if Markdown rendering fails.
 				m.errMsg = fmt.Sprintf("Preview failed: %v", err)

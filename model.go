@@ -127,6 +127,9 @@ type model struct {
 
 	errMsg string
 
+	kittyImages bool
+	imgReg      *imageRegistry
+
 	fileClip      fileClipboard
 	autoSaveFlash bool
 
@@ -305,6 +308,8 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 		delegateInput:            del,
 		templateNameInput:        tn,
 		inboxPath:                inboxPath,
+		kittyImages:              detectKittyGraphics(os.Getenv),
+		imgReg:                   newImageRegistry(),
 	}
 
 	root, err := buildTree(vault)
@@ -323,6 +328,73 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 
 func (m model) isDirty() bool {
 	return m.editor.Value() != m.cleanContent
+}
+
+// currentNoteDir returns the directory image links in the open note should
+// be resolved against: the open file's directory, the target directory of an
+// unsaved new note, or the vault root as a last resort.
+func (m *model) currentNoteDir() string {
+	if m.currentFile != "" {
+		return filepath.Dir(m.currentFile)
+	}
+	if m.newNoteDir != "" {
+		return m.newNoteDir
+	}
+	return m.vault
+}
+
+// copyImageElement handles Ctrl+C/Ctrl+X on a lone image element: it reads
+// the asset bytes off disk and writes them to the system clipboard as an
+// image (so they round-trip into other apps and back into clipad). On cut,
+// it also deletes the element's line. Returns false if it could not handle
+// the copy (e.g. no clipboard image tool available), so the caller can fall
+// back to a normal text copy/cut.
+func (m *model) copyImageElement(target string, cut bool) bool {
+	env := clipEnvForPaste()
+	if env == clipNone || !imageToolAvailable(env) {
+		return false
+	}
+	abs := resolveAssetPath(m.currentNoteDir(), target)
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return false
+	}
+	if err := writeClipboardImage(env, data); err != nil {
+		return false
+	}
+	if cut {
+		m.editor.DeleteCurrentLine()
+	}
+	m.errMsg = "Copied image to clipboard"
+	return true
+}
+
+// pasteImageOrText handles Ctrl+V in the editor: if the clipboard holds an
+// image, it saves the image as an asset and inserts a markdown link to it;
+// otherwise it falls back to a normal text paste.
+func (m *model) pasteImageOrText() tea.Cmd {
+	env := clipEnvForPaste()
+	if env != clipNone && clipboardHasImage(env) {
+		if !imageToolAvailable(env) {
+			m.errMsg = "install wl-clipboard or xclip to paste images"
+			return nil
+		}
+		data, err := readClipboardImage(env)
+		if err != nil || len(data) == 0 {
+			m.errMsg = "could not read clipboard image"
+			return nil
+		}
+		date := time.Now().Format("2006-01-02")
+		abs, err := saveAsset(m.vault, data, date)
+		if err != nil {
+			m.errMsg = "could not save image: " + err.Error()
+			return nil
+		}
+		rel := assetRelPath(m.currentNoteDir(), abs)
+		m.editor.InsertImageLink("![](" + rel + ")")
+		return nil
+	}
+	return m.editor.Paste()
 }
 
 // closePluginRun resets the shared plugin-run state and surfaces a status
@@ -679,6 +751,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == editorPanel && m.editorMode == modeEdit {
+				if target, ok := m.editor.LoneImageElement(); ok {
+					if m.copyImageElement(target, false) {
+						return m, nil
+					}
+				}
 				m.editor.Copy()
 			}
 			return m, nil
@@ -694,6 +771,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == editorPanel && m.editorMode == modeEdit {
+				if target, ok := m.editor.LoneImageElement(); ok {
+					if m.copyImageElement(target, true) {
+						return m, nil
+					}
+				}
 				m.editor.Cut()
 			}
 			return m, nil
@@ -706,7 +788,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activePanel == editorPanel && m.editorMode == modeEdit {
-				cmd := m.editor.Paste()
+				cmd := m.pasteImageOrText()
 				return m, cmd
 			}
 			return m, nil
@@ -1691,6 +1773,7 @@ func (m *model) openFile(path string) {
 	m.editorMode = modeEdit
 	m.tree.currentFile = path
 	m.errMsg = ""
+	m.editor.SetImageContext(m.imgReg, m.kittyImages, m.currentNoteDir())
 }
 
 func (m *model) previewSelectedFile() {
@@ -1738,6 +1821,7 @@ func (m *model) startNewNote() {
 	m.activePanel = editorPanel
 	m.editorMode = modeEdit
 	m.errMsg = ""
+	m.editor.SetImageContext(m.imgReg, m.kittyImages, m.currentNoteDir())
 }
 
 func (m *model) saveCurrentFile() {
@@ -1903,7 +1987,7 @@ func applyExpanded(node *TreeNode, m map[string]bool) {
 
 func (m model) togglePreview() (tea.Model, tea.Cmd) {
 	if m.editorMode == modeEdit {
-		vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight)
+		vp, err := newPreviewViewport(m.editor.Value(), m.editorWidth, m.editorHeight, m.imgReg, m.kittyImages, m.currentNoteDir())
 		if err != nil {
 			m.errMsg = fmt.Sprintf("Preview failed: %v", err)
 			return m, nil
@@ -1985,6 +2069,7 @@ func (m *model) recalcLayout() {
 	m.tree.clampOffset()
 
 	setEditorSize(&m.editor, m.editorWidth, m.editorHeight)
+	m.editor.SetImageContext(m.imgReg, m.kittyImages, m.currentNoteDir())
 
 	if m.chatOpen {
 		innerW := m.chatWidth - 4
