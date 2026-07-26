@@ -8,6 +8,7 @@ Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss,
 
 - **File tree** with nested folders, expand/collapse, fuzzy search
 - **Markdown editor** with line numbers and preview rendering
+- **Inline images** — paste a screenshot with `Ctrl+V` and see it as real pixels in the editor and preview
 - **Plugin system** with blackbox.ai and OpenRouter integrations for LLM-powered note transformation (rephrase, translate, redraft)
 - **AI shortcuts** with two modes per shortcut: *replace* (diff + accept) or *review* (read-only side-by-side commentary that never edits the note)
 - **Find & replace** with live highlighting and match count
@@ -123,6 +124,8 @@ clipad path/to/dir/         # start a new note in that directory
 | `Esc` | Return to file tree |
 | `Ctrl+Z` | Undo last edit |
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
+| `Ctrl+C` / `Ctrl+X` | Copy / cut the selection — or the image under the cursor, as an image (see [Images](#images)) |
+| `Ctrl+V` | Paste — an image if the clipboard holds one, otherwise text |
 | All other keys | Normal text editing |
 
 ### Mouse
@@ -137,6 +140,61 @@ clipad path/to/dir/         # start a new note in that directory
 | Wheel up / down in tree | Scroll tree |
 
 Terminal-native selection (dragging with the OS to copy outside the app) is disabled while clipad has the mouse. Most terminals still allow Shift+drag to bypass the app and use the OS selection.
+
+## Images
+
+Copy a screenshot to your clipboard, put the cursor on an empty line, and press `Ctrl+V`. The image is saved into your vault and rendered inline — actual pixels, in the editor and in the `Ctrl+P` preview.
+
+### How it's stored
+
+The image file goes to `<vault>/assets/`, named by date and a hash of its contents:
+
+```
+assets/img-2026-07-26-3f9a1c2b.png
+```
+
+The note itself only ever gets an ordinary markdown link, relative to the note:
+
+```markdown
+![](assets/img-2026-07-26-3f9a1c2b.png)
+```
+
+That keeps notes as plain markdown — readable in any other editor, and no base64 bloat in the semantic index. Because the filename is derived from the content, pasting the same image twice reuses the one file instead of duplicating it.
+
+A line that is *exactly* one markdown image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) is treated as an **image element**. Links you write by hand render the same way — nothing has to have been pasted by clipad.
+
+### How it renders
+
+Images display via the kitty graphics protocol, auto-detected from your terminal — kitty, [Ghostty](https://ghostty.org), and WezTerm all work. They're scaled to fit, preserving aspect ratio, up to 64×12 cells.
+
+Any other terminal falls back to a text chip, so notes stay perfectly usable over SSH or in tmux:
+
+```
+🖼 image (img-2026-07-26-3f9a1c2b.png)
+```
+
+### Editing around an image
+
+An image element behaves as a single object rather than a line of link text:
+
+| Action | Effect |
+|--------|--------|
+| `Left` / `Right` | Steps over the element instead of walking through the link text |
+| `Backspace` / `Delete` | Removes the whole element in one step; `Ctrl+Z` brings it back |
+| `Ctrl+C` / `Ctrl+X` | Puts the *image itself* on the clipboard — paste it into any other app |
+
+`Ctrl+C` and `Ctrl+X` only do this when the cursor sits on a lone image; a selection spanning multiple lines copies as normal markdown text.
+
+### Requirements
+
+Image support shells out to a system clipboard tool, so you need one of:
+
+| Session | Tool | Package |
+|---------|------|---------|
+| Wayland | `wl-copy` / `wl-paste` | `wl-clipboard` |
+| X11 | `xclip` | `xclip` |
+
+If neither is installed, clipad tells you so in the status bar and `Ctrl+V` still pastes text as usual. Linux only — on other platforms `Ctrl+V` is a normal text paste.
 
 ## Plugins
 
