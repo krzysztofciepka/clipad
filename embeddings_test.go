@@ -145,6 +145,54 @@ func TestNewEmbeddingClient_Ollama(t *testing.T) {
 	}
 }
 
+func TestNewEmbeddingClient_OpenRouterEnvFallback(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // no plugin config on disk
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-env")
+
+	cfg := Config{EmbeddingProvider: "openrouter", EmbeddingModel: "qwen/qwen3-embedding-8b"}
+	c, err := newEmbeddingClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := c.(*OpenRouterEmbeddings)
+	if !ok {
+		t.Fatalf("got %T, want *OpenRouterEmbeddings", c)
+	}
+	if e.APIKey != "sk-or-env" {
+		t.Errorf("APIKey = %q, want env value", e.APIKey)
+	}
+}
+
+func TestNewEmbeddingClient_OpenRouterConfigWins(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-env")
+	if err := savePluginConfig("openrouter", map[string]string{"api_key": "sk-or-cfg"}); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := newEmbeddingClient(Config{EmbeddingProvider: "openrouter"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := c.(*OpenRouterEmbeddings); e.APIKey != "sk-or-cfg" {
+		t.Errorf("APIKey = %q, want plugin config value", e.APIKey)
+	}
+}
+
+func TestNewEmbeddingClient_OpenRouterNoKeyAnywhere(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "")
+
+	_, err := newEmbeddingClient(Config{EmbeddingProvider: "openrouter"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
+		t.Errorf("error = %v, want mention of OPENROUTER_API_KEY", err)
+	}
+}
+
 func TestNewEmbeddingClient_UnknownProvider(t *testing.T) {
 	cfg := Config{EmbeddingProvider: "bogus"}
 	_, err := newEmbeddingClient(cfg)

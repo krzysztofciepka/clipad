@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 // EmbeddingClient computes vector embeddings for batches of text.
@@ -160,13 +161,14 @@ func newEmbeddingClient(cfg Config) (EmbeddingClient, error) {
 	case "ollama":
 		return &OllamaEmbeddings{BaseURL: cfg.OllamaURL, ModelName: cfg.EmbeddingModel}, nil
 	case "openrouter", "":
-		keyCfg, err := loadPluginConfig("openrouter")
-		if err != nil {
-			return nil, fmt.Errorf("openrouter embeddings need plugin config: %w", err)
-		}
+		// Plugin config wins when set; otherwise fall back to the environment.
+		keyCfg, _ := loadPluginConfig("openrouter")
 		apiKey := keyCfg["api_key"]
 		if apiKey == "" {
-			return nil, fmt.Errorf("openrouter embeddings: api_key not set in plugin config")
+			apiKey = os.Getenv("OPENROUTER_API_KEY")
+		}
+		if apiKey == "" {
+			return nil, fmt.Errorf("openrouter embeddings: no api_key in plugin config and OPENROUTER_API_KEY not set")
 		}
 		return &OpenRouterEmbeddings{APIKey: apiKey, ModelName: cfg.EmbeddingModel}, nil
 	default:
