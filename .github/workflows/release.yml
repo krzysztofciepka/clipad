@@ -1,0 +1,25 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          go build -ldflags "-X main.version=${TAG}" -o "clipad-${TAG}-linux-amd64" .
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release create "${TAG}" --title "clipad ${TAG}" --generate-notes || true
+          gh release upload "${TAG}" "clipad-${TAG}-linux-amd64" --clobber

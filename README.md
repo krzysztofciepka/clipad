@@ -1,43 +1,99 @@
-# Clipad
+<div align="center">
 
-A terminal-based note-taking app with an Obsidian-like layout. File tree on the left, markdown editor on the right, plugin system for LLM-powered note transformation.
+# 📝 clipad
 
-Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss, Glamour).
+**Obsidian-flavoured note-taking for your terminal — with an AI sidekick.**
+
+[![Release](https://img.shields.io/github/v/release/krzysztofciepka/clipad)](https://github.com/krzysztofciepka/clipad/releases/latest)
+[![CI](https://github.com/krzysztofciepka/clipad/actions/workflows/ci.yml/badge.svg)](https://github.com/krzysztofciepka/clipad/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Go](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)
+
+![clipad demo](docs/img/hero.gif)
+
+</div>
+
+## Why clipad?
+
+- **Your notes stay plain markdown.** A vault is just a folder of .md files — no lock-in, works alongside Obsidian or any editor.
+- **A real TUI, mouse included.** File tree, editor, live preview, click, drag-select, scroll — in any terminal, over SSH too.
+- **Images in the terminal.** Paste a screenshot with Ctrl+V and see actual pixels inline (kitty/Ghostty/WezTerm).
+- **AI that never surprises you.** Every LLM transform lands in a side-by-side diff you accept or reject; review-style shortcuts can't touch your note at all.
+- **An agent that knows your vault.** Semantic search with citations plus vault-scoped shell tools, in a chat panel.
+- **One binary that updates itself.** `clipad --upgrade` fetches the latest release and swaps itself in place, checksum-verified.
 
 ## Features
 
-- **File tree** with nested folders, expand/collapse, fuzzy search
-- **Markdown editor** with line numbers and preview rendering
-- **Auto-copy on highlight** — selecting text with the mouse copies it to the system clipboard, confirmed by a green `Copied` flash in the status bar
-- **Inline images** — paste a screenshot with `Ctrl+V` and see it as real pixels in the editor and preview
-- **Plugin system** with OpenRouter and OpenCode Zen integrations for LLM-powered note transformation (rephrase, translate, redraft)
-- **AI shortcuts** with two modes per shortcut: *replace* (diff + accept) or *review* (read-only side-by-side commentary that never edits the note)
-- **Find & replace** with live highlighting and match count
-- **Side-by-side diff view** for reviewing plugin changes, plus a read-only review view for commentary-style shortcuts
-- **Adaptive layout** that scales to narrow terminals
-- **First-run setup** with interactive vault path configuration
+### Browse and navigate
 
-## Install
+- **File tree** with nested folders, expand and collapse, and a `/` fuzzy filter.
+- **Create, rename and delete** files and folders without leaving the tree.
+- **Quick capture** — `Ctrl+J` appends a timestamped bullet to `inbox.md` from anywhere in the app.
+- **Git sync** — `F5` pushes and pulls the vault against its git remote.
+- **A clickable button bar** at the bottom of the left pane — **Find & replace**, **AI tools**, **Ask**, **AI search** — so there is no key to remember.
+- **Adaptive layout** that scales down to narrow terminals, and a first-run prompt that sets up your vault.
 
-### From release
+### Write and preview
 
-Download the binary from the [latest release](https://github.com/krzysztofciepka/clipad/releases) and place it in your `PATH`.
+- **Markdown editor** with line numbers, undo and redo, and a preview you toggle with `Ctrl+P`.
+- **Auto-copy on highlight** — selecting text with the mouse puts it on the system clipboard, confirmed by a green `Copied` flash in the status bar.
+- **Split a note in two** — `Ctrl+O` moves the selected text into a new note in the same directory.
+- **Mouse throughout** — click to place the cursor, drag to select, wheel to scroll, in the editor and the tree alike.
 
-To upgrade an existing installation in place:
+![clipad markdown preview](docs/img/preview.png)
+
+*`Ctrl+P` renders the note in place — headers, tables and inline code.*
+
+### Find and replace
+
+- **Live highlighting** of every match as you type, with a running count in the status bar.
+- `Ctrl+R` opens it from anywhere, `Enter` moves on to the replacement, `Esc` cancels without touching the note.
+
+![clipad find and replace](docs/img/find-replace.png)
+
+*Six matches for `query`, highlighted the moment the term is typed.*
+
+### Images in the terminal
+
+- **Paste a screenshot** with `Ctrl+V` and see it as real pixels in both the editor and the preview.
+- **Notes stay plain markdown** — the file goes to `<vault>/assets/`, the note gets an ordinary relative link. No base64, readable in any other editor.
+- **Graceful fallback** — terminals without graphics support show a text chip instead, so notes stay usable over SSH and in tmux.
+
+More in [Images](#images).
+
+### AI shortcuts and plugins
+
+- **23 shortcuts out of the box** — `Ctrl+G` opens the picker, seeded with a library covering requirements, todos, tech notes and formatting.
+- **Two shortcut types.** `replace` rewrites the note through a side-by-side diff you accept or reject; `review` opens a read-only pane that never touches the file.
+- **Selection-aware** — with text selected, only that text is sent to the model and only that text is replaced.
+- **Bring your own model** — OpenRouter or OpenCode Zen, cycled with `p` right inside the picker.
+- **Fabric patterns** show up next to your own shortcuts if you have [fabric](https://github.com/danielmiessler/fabric) installed, and run through your provider.
+- **`/` filters** shortcuts and patterns by name, which matters once a few hundred patterns are in the list.
+
+![clipad AI shortcut picker](docs/img/ai-picker.png)
+
+*The picker: your shortcut library on top, fabric patterns below, active provider in the footer.*
+
+### An agent for your vault
+
+- **`Ctrl+K` opens a chat panel** that both answers questions about your notes and edits them for you.
+- **Semantic search with citations** — press `1`–`9` to open the note behind a citation.
+- **Shell access, fenced in** — the agent's commands run with your vault as the working directory, guarded against paths that escape it.
+
+More in [Agent](#agent).
+
+<a id="installation"></a>
+
+## Quick start
+
+Download the binary from the [latest release](https://github.com/krzysztofciepka/clipad/releases/latest) and put it on your `PATH`:
 
 ```bash
-clipad --upgrade
+chmod +x clipad-v0.0.49-linux-amd64
+sudo mv clipad-v0.0.49-linux-amd64 /usr/local/bin/clipad
 ```
 
-This downloads the latest release, verifies its sha256 checksum, and atomically replaces the running binary.
-
-### From source
-
-```bash
-go install github.com/krzysztofciepka/clipad@latest
-```
-
-Or build manually:
+Or build from source:
 
 ```bash
 git clone https://github.com/krzysztofciepka/clipad.git
@@ -52,15 +108,53 @@ TAG=v0.0.22
 go build -ldflags "-X main.version=$TAG" -o clipad-$TAG-linux-amd64 .
 ```
 
-## Usage
+Then run it:
 
 ```bash
 clipad
 ```
 
-On first run, you'll be prompted to set your vault path (the directory where your notes live). The config is stored at `~/.config/clipad/config.toml`.
+On first run you are prompted for your vault path — the directory where your notes live. The config is written to `~/.config/clipad/config.toml`.
 
-### CLI flags
+To upgrade an existing installation in place:
+
+```bash
+clipad --upgrade
+```
+
+This downloads the latest release, verifies its sha256 checksum, and atomically replaces the running binary. Restart clipad afterwards. Linux/amd64 only.
+
+<details>
+<summary><strong>Table of contents</strong></summary>
+
+- [CLI flags](#cli-flags)
+- [Quick actions](#quick-actions)
+- [Keybindings](#keybindings)
+  - [Global](#global)
+  - [File tree](#file-tree)
+  - [Button bar](#button-bar)
+  - [Editor](#editor)
+  - [Mouse](#mouse)
+- [Images](#images)
+  - [How it's stored](#how-its-stored)
+  - [How it renders](#how-it-renders)
+  - [Editing around an image](#editing-around-an-image)
+  - [Requirements](#requirements)
+- [Plugins & AI](#plugins--ai)
+  - [OpenRouter](#openrouter)
+  - [AI shortcuts](#ai-shortcuts)
+  - [Switching providers](#switching-providers)
+  - [Fabric patterns](#fabric-patterns)
+  - [Filtering the picker](#filtering-the-picker)
+  - [The default library](#the-default-library)
+- [Agent](#agent)
+- [Configuration](#configuration)
+- [Contributing](#contributing)
+- [License](#license)
+
+</details>
+
+## CLI flags
 
 | Flag | Action |
 |------|--------|
@@ -69,10 +163,9 @@ On first run, you'll be prompted to set your vault path (the directory where you
 | `-p`, `--preview` `<path>` | Open `<path>` in preview mode with the file tree hidden; typing switches to edit mode |
 | `-n`, `--new` | Start in new-note mode (same as "+ Add note"); the file tree stays visible |
 
-### Quick actions
+## Quick actions
 
-Open or create a note straight from the shell. Paths may be relative or
-absolute and can point anywhere on the filesystem.
+Open or create a note straight from the shell. Paths may be relative or absolute and can point anywhere on the filesystem.
 
 ```bash
 clipad path/to/note.md      # open in edit mode, file tree hidden
@@ -105,9 +198,10 @@ clipad path/to/dir/         # start a new note in that directory
 | `Ctrl+G` | Open AI shortcut selector |
 | `/` (in picker) | Filter shortcuts and fabric patterns |
 | `Ctrl+L` | Create AI shortcut |
+| `Ctrl+T` | AI search — semantic search across the vault (needs `embedding_provider`) |
 | `Ctrl+K` | Open the notes **agent** panel (ask about or manage your notes) |
 
-### File Tree
+### File tree
 
 | Key | Action |
 |-----|--------|
@@ -213,23 +307,24 @@ Image support shells out to a system clipboard tool, so you need one of:
 
 If neither is installed, clipad tells you so in the status bar and `Ctrl+V` still pastes text as usual. Linux only — on other platforms `Ctrl+V` is a normal text paste.
 
-## Plugins
+## Plugins & AI
 
-Plugins process your notes through external services. Press `Ctrl+Space` to open the plugin selector.
+Plugins process your notes through external services. Press `Ctrl+Space` to open the plugin selector. Two LLM providers ship with clipad: OpenRouter and OpenCode Zen.
 
 ### OpenRouter
 
 LLM-powered note transformation via [OpenRouter](https://openrouter.ai). Supports any model available on the platform.
 
 On first use, you'll be prompted for:
-- **API Key** - your OpenRouter API key
-- **Model** - e.g. `openai/gpt-4o`, `anthropic/claude-sonnet-4`
+
+- **API Key** — your OpenRouter API key
+- **Model** — e.g. `openai/gpt-4o`, `anthropic/claude-sonnet-4`
 
 After processing, a side-by-side diff shows the original and modified note. Press `y` to accept or `n` to reject.
 
 Plugin config is stored at `~/.config/clipad/plugins/openrouter.toml`.
 
-### AI Shortcuts
+### AI shortcuts
 
 Quick text transformations powered by your configured LLM. Press `Ctrl+G`, pick a shortcut, and the model rewrites or augments the current note. The diff view lets you accept or reject the change. Each AI shortcut has a type — `replace` rewrites the note via the diff+accept flow; `review` opens a read-only side-by-side pane you can scroll and copy from. When creating a shortcut you choose its type as the final step.
 
@@ -237,31 +332,23 @@ If text is selected when you trigger a plugin or shortcut, only the selected tex
 
 Shortcuts live in `~/.config/clipad/ai_shortcuts.toml` as `[[shortcuts]]` blocks (`name` + `prompt`). On first run the file is seeded with a default library of 23 shortcuts; you can edit, delete, or add entries freely afterward — clipad never overwrites your file.
 
-**Switching providers.** Inside the shortcut picker, press `p` to cycle the active AI provider (OpenRouter ⇄ OpenCode Zen). The current provider is shown in the picker hint line and persisted to `~/.config/clipad/config.toml` as `ai_shortcut_provider`. If you select a provider that has not been configured yet, the next shortcut run will trigger its setup wizard.
+### Switching providers
 
-**Fabric patterns.** If you have [fabric](https://github.com/danielmiessler/fabric)
-installed, the shortcut picker lists every pattern it finds under a
-`── Fabric patterns ──` heading. Clipad reads the pattern files directly — it never
-invokes the fabric CLI — so a pattern runs through whichever AI provider your
-shortcuts use, not fabric's own model config. The pattern's `system.md` becomes the
-system prompt and your note becomes the user message, which is how fabric itself
-invokes them.
+Inside the shortcut picker, press `p` to cycle the active AI provider (OpenRouter ⇄ OpenCode Zen). The current provider is shown in the picker hint line and persisted to `~/.config/clipad/config.toml` as `ai_shortcut_provider`. If you select a provider that has not been configured yet, the next shortcut run will trigger its setup wizard.
 
-Patterns always open in the read-only review pane: most of them analyse or extract
-rather than rewrite, so replacing your note with their output would destroy it. Press
-`c` in the review to copy the result. Patterns cannot be edited, deleted, or
-reordered from clipad — edit the files under `~/.config/fabric/patterns/` instead.
+### Fabric patterns
 
-Clipad looks in `$FABRIC_CONFIG_HOME/patterns` when that variable is set, otherwise
-`~/.config/fabric/patterns`. Descriptions come from `pattern_explanations.md` in the
-same directory when fabric ships one. If fabric is not installed, the section simply
-does not appear.
+If you have [fabric](https://github.com/danielmiessler/fabric) installed, the shortcut picker lists every pattern it finds under a `── Fabric patterns ──` heading. Clipad reads the pattern files directly — it never invokes the fabric CLI — so a pattern runs through whichever AI provider your shortcuts use, not fabric's own model config. The pattern's `system.md` becomes the system prompt and your note becomes the user message, which is how fabric itself invokes them.
 
-**Filtering.** With a few hundred patterns in the list, press `/` inside the picker to
-fuzzy-filter shortcuts and patterns by name. Arrows move, `Enter` runs, `Esc` clears
-the filter.
+Patterns always open in the read-only review pane: most of them analyse or extract rather than rewrite, so replacing your note with their output would destroy it. Press `c` in the review to copy the result. Patterns cannot be edited, deleted, or reordered from clipad — edit the files under `~/.config/fabric/patterns/` instead.
 
-The default library covers:
+Clipad looks in `$FABRIC_CONFIG_HOME/patterns` when that variable is set, otherwise `~/.config/fabric/patterns`. Descriptions come from `pattern_explanations.md` in the same directory when fabric ships one. If fabric is not installed, the section simply does not appear.
+
+### Filtering the picker
+
+With a few hundred patterns in the list, press `/` inside the picker to fuzzy-filter shortcuts and patterns by name. Arrows move, `Enter` runs, `Esc` clears the filter.
+
+### The default library
 
 - **Requirements** — `prd`, `userstory`, `acceptance`, `critique`
 - **Todos** — `todos`, `prioritize`, `breakdown`
@@ -271,27 +358,16 @@ The default library covers:
 
 ## Agent
 
-Press `Ctrl+K` to open the agent — a continuous chat in the right-hand panel
-that can both answer questions about your notes and manage them. It uses your
-active AI provider (OpenRouter by default) with native tool-calling and has two
-tools:
+Press `Ctrl+K` to open the agent — a continuous chat in the right-hand panel that can both answer questions about your notes and manage them. It uses your active AI provider (OpenRouter by default) with native tool-calling and has two tools:
 
-- **search_vault** — semantic search over your notes (cited inline; press `1`–`9`
-  to open a citation). Requires `embedding_provider` configured; before each
-  search it prunes index entries for files that no longer exist.
-- **bash** — runs shell commands (cd, mv, cp, cat, sed, awk, …) in your vault to
-  inspect and edit notes. Commands run with the vault as the working directory
-  and a best-effort guard that blocks paths escaping the vault and `sudo`.
+- **search_vault** — semantic search over your notes (cited inline; press `1`–`9` to open a citation). Requires `embedding_provider` configured; before each search it prunes index entries for files that no longer exist.
+- **bash** — runs shell commands (cd, mv, cp, cat, sed, awk, …) in your vault to inspect and edit notes. Commands run with the vault as the working directory and a best-effort guard that blocks paths escaping the vault and `sudo`.
 
-Example: *"rename all Task <N> files so N is sequential starting from 1, only in
-the Prywatne directory."*
+Example: *"rename all `Task <N>` files so N is sequential starting from 1, only in the Prywatne directory."*
 
-Slash commands: `/clear` (reset the conversation), `/exit` (close), `/model`
-(show the model), `/help`. Press `Esc` to stop a run.
+Slash commands: `/clear` (reset the conversation), `/exit` (close), `/model` (show the model), `/help`. Press `Esc` to stop a run.
 
-The agent's bash commands run automatically and are scoped to the vault by
-working directory plus a heuristic guard — this is a safety rail against
-accidents, not a security sandbox.
+The agent's bash commands run automatically and are scoped to the vault by working directory plus a heuristic guard — this is a safety rail against accidents, not a security sandbox.
 
 ## Configuration
 
@@ -300,8 +376,16 @@ accidents, not a security sandbox.
 | `~/.config/clipad/config.toml` | Vault path; optional `inbox_path` override (defaults to `inbox.md` relative to the vault — accepts vault-relative subpaths, absolute paths, and `~`-prefixed paths) |
 | `~/.config/clipad/plugins/*.toml` | Plugin settings |
 
+`config.toml` also holds `ai_shortcut_provider` (see [Switching providers](#switching-providers)) and `embedding_provider` (see [Agent](#agent)), both written or read as those features are used.
+
 Respects `$XDG_CONFIG_HOME` if set.
+
+## Contributing
+
+Issues and pull requests are welcome — bug reports, new AI shortcuts for the default library, and terminal compatibility fixes especially.
+
+clipad is a single Go module built on the [Charm](https://charm.sh) ecosystem — Bubble Tea, Lipgloss and Glamour — with no code generation and no build tooling beyond the Go toolchain. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and how to run the tests.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
