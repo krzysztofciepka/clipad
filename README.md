@@ -89,8 +89,14 @@ More in [Agent](#agent).
 Download the binary from the [latest release](https://github.com/krzysztofciepka/clipad/releases/latest) and put it on your `PATH`:
 
 ```bash
-chmod +x clipad-v0.0.49-linux-amd64
-sudo mv clipad-v0.0.49-linux-amd64 /usr/local/bin/clipad
+chmod +x clipad-v0.0.50-linux-amd64
+sudo mv clipad-v0.0.50-linux-amd64 /usr/local/bin/clipad
+```
+
+Or install with Go:
+
+```bash
+go install github.com/krzysztofciepka/clipad@latest
 ```
 
 Or build from source:
@@ -104,7 +110,7 @@ go build -o clipad .
 For a release build that knows its own version (so `--version` and `--upgrade` work correctly):
 
 ```bash
-TAG=v0.0.22
+TAG=v0.0.50
 go build -ldflags "-X main.version=$TAG" -o clipad-$TAG-linux-amd64 .
 ```
 

@@ -1,4 +1,4 @@
-module clipad
+module github.com/krzysztofciepka/clipad
 
 go 1.26.1
 
