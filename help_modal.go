@@ -69,6 +69,17 @@ var helpSections = []helpSection{
 		},
 	},
 	{
+		title: "Button Bar (left pane)",
+		entries: []helpEntry{
+			{"Click", "Run the button's action"},
+			{"Click [-] / [+]", "Collapse or expand the bar"},
+			{"Tab", "Focus the bar (tree → bar → editor)"},
+			{"Up / Down", "Move between buttons"},
+			{"Enter / Space", "Activate the focused button"},
+			{"Esc", "Return focus to the file tree"},
+		},
+	},
+	{
 		title: "Editor",
 		entries: []helpEntry{
 			{"Esc", "Return to file tree"},

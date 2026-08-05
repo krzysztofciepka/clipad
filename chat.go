@@ -95,17 +95,45 @@ func chatPanelView(vp viewport.Model, input string, mode chatModeT, width, heigh
 	return chatPanelStyle.Width(width).Height(height).Render(body + "\n" + inputLine + "\n" + footer)
 }
 
-// mostRecentCitation returns the Nth citation (1-indexed) of the most recent
-// assistant turn that has citations, or nil if there isn't one.
-func mostRecentCitation(turns []chatTurn, n int) *citation {
+// chatCitations returns the citations of the most recent assistant turn that
+// has any. The numbered 1–9 shortcuts and the Prev/Next cite buttons both
+// index into this list.
+func chatCitations(turns []chatTurn) []citation {
 	for i := len(turns) - 1; i >= 0; i-- {
 		if turns[i].Role == "assistant" && len(turns[i].Citations) > 0 {
-			if n >= 1 && n <= len(turns[i].Citations) {
-				c := turns[i].Citations[n-1]
-				return &c
-			}
-			return nil
+			return turns[i].Citations
 		}
 	}
 	return nil
+}
+
+// nextCiteIndex advances a 1-based citation cursor by delta, wrapping at both
+// ends. A cursor of 0 means "nothing selected yet": stepping forward lands on
+// the first citation, stepping back on the last.
+func nextCiteIndex(cursor, delta, n int) int {
+	if n <= 0 {
+		return 0
+	}
+	if cursor == 0 {
+		if delta > 0 {
+			return 1
+		}
+		return n
+	}
+	i := (cursor - 1 + delta) % n
+	if i < 0 {
+		i += n
+	}
+	return i + 1
+}
+
+// mostRecentCitation returns the Nth citation (1-indexed) of the most recent
+// assistant turn that has citations, or nil if there isn't one.
+func mostRecentCitation(turns []chatTurn, n int) *citation {
+	cites := chatCitations(turns)
+	if n < 1 || n > len(cites) {
+		return nil
+	}
+	c := cites[n-1]
+	return &c
 }

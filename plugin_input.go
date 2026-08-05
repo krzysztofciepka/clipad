@@ -121,6 +121,7 @@ func (m model) handlePluginPrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
 		m.paneFocus = paneFocusRight
 		m.inputMode = inputPluginDiff
+		m.syncBarLayout() // the bar swaps to Approve/Reject
 		chunks, errs := m.pluginActive.Run(ctx, content, prompt, cfg)
 		m.activeChunks = chunks
 		return m, streamPluginCmd(chunks, errs)

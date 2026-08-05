@@ -25,32 +25,9 @@ var (
 func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y":
-		if m.aiRunOnSelection {
-			// ReplaceSelection records its own op entry.
-			m.editor.ReplaceSelection(m.pluginDiffResult)
-			m.aiRunOnSelection = false
-		} else {
-			pre := m.editor.recordOp()
-			m.editor.SetValue(m.pluginDiffResult)
-			m.editor.commitOp(pre)
-		}
-		m.editor.ClearSelection()
-		// cleanContent unchanged — editor now differs from it, so isDirty() returns true
-		m.inputMode = inputNone
-		m.pluginActive = nil
-		m.pluginDiffOriginal = ""
-		m.pluginDiffResult = ""
-		m.activePanel = editorPanel
-		m.editorMode = modeEdit
-		cmd := m.editor.Focus()
-		return m, cmd
+		return m, m.acceptDiff()
 	case "n", "esc":
-		m.aiRunOnSelection = false
-		m.inputMode = inputNone
-		m.pluginActive = nil
-		m.pluginDiffOriginal = ""
-		m.pluginDiffResult = ""
-		return m, nil
+		return m, m.rejectDiff()
 	case "ctrl+q":
 		if m.isDirty() {
 			m.inputMode = inputUnsavedGuard
@@ -59,6 +36,12 @@ func (m model) handlePluginDiff(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "tab":
+		// right pane → left pane → button bar → right pane
+		if m.paneFocus == paneFocusLeft && m.barHeight > 0 {
+			m.buttonFocused = true
+			m.buttonCursor = 0
+			return m, nil
+		}
 		m.paneFocus = togglePaneFocus(m.paneFocus)
 		return m, nil
 	case "up", "k":

@@ -227,6 +227,10 @@ func TestHandleEditorMouse_PressPositionsCursor(t *testing.T) {
 }
 
 func TestHandleEditorMouse_DragSelects(t *testing.T) {
+	old := writeClipboard
+	defer func() { writeClipboard = old }()
+	writeClipboard = func(string) error { return nil }
+
 	m := newMouseTestModel(t)
 	m.editor.SetValue("hello world")
 
@@ -445,5 +449,72 @@ func TestHandleTreeMouse_ClickAddNoteRow_TriggersNewNote(t *testing.T) {
 	}
 	if m.tree.cursor != -1 {
 		t.Errorf("tree.cursor = %d, want -1", m.tree.cursor)
+	}
+}
+
+func TestHandleEditorMouse_DragReleaseAutoCopies(t *testing.T) {
+	var wrote string
+	old := writeClipboard
+	defer func() { writeClipboard = old }()
+	writeClipboard = func(s string) error { wrote = s; return nil }
+
+	m := newMouseTestModel(t)
+	m.editor.SetValue("hello world")
+
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleEditorMouse(m, 5, 0, press)
+	m = next.(model)
+
+	motion := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion}
+	next, _ = handleEditorMouse(m, 9, 0, motion)
+	m = next.(model)
+
+	if wrote != "" {
+		t.Errorf("clipboard written during motion (%q); copy must wait for release", wrote)
+	}
+
+	release := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease}
+	next, cmd := handleEditorMouse(m, 9, 0, release)
+	m = next.(model)
+
+	if wrote != "ello" {
+		t.Errorf("clipboard = %q, want %q", wrote, "ello")
+	}
+	if !m.copyFlash {
+		t.Error("copyFlash should be set after auto-copy")
+	}
+	if cmd == nil {
+		t.Error("release with a selection should return the flash fade tick")
+	}
+	if !m.editor.selActive {
+		t.Error("selection should survive the auto-copy")
+	}
+}
+
+func TestHandleEditorMouse_ClickWithoutDragDoesNotCopy(t *testing.T) {
+	var called bool
+	old := writeClipboard
+	defer func() { writeClipboard = old }()
+	writeClipboard = func(string) error { called = true; return nil }
+
+	m := newMouseTestModel(t)
+	m.editor.SetValue("hello world")
+
+	press := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	next, _ := handleEditorMouse(m, 5, 0, press)
+	m = next.(model)
+
+	release := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease}
+	next, cmd := handleEditorMouse(m, 5, 0, release)
+	m = next.(model)
+
+	if called {
+		t.Error("a plain click should not write the clipboard")
+	}
+	if m.copyFlash {
+		t.Error("a plain click should not flash Copied")
+	}
+	if cmd != nil {
+		t.Error("a plain click should return no command")
 	}
 }

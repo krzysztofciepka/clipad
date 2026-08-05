@@ -220,7 +220,20 @@ func handleEditorMouse(m model, localX, localY int, msg tea.MouseMsg) (tea.Model
 		case tea.MouseActionMotion:
 			m.editor.UpdateMouseDrag(line, col)
 		case tea.MouseActionRelease:
+			// Captured before EndMouseDrag, which clears mouseDragging: a
+			// release only auto-copies when a drag actually ended in the
+			// editor. Without this, a press in another panel (tree/chat)
+			// dragged into the editor and released there would re-copy
+			// whatever selection happens to already be present.
+			wasDragging := m.editor.mouseDragging
 			m.editor.EndMouseDrag()
+			// Highlighting with the mouse copies straight to the system
+			// clipboard. EndMouseDrag already cleared the selection for a
+			// click without a drag, so a plain click cannot reach this.
+			if wasDragging && m.editor.SelectedText() != "" {
+				m.editor.Copy()
+				return m, m.flashCopied()
+			}
 		}
 		return m, nil
 	case tea.MouseButtonWheelUp:
@@ -294,13 +307,19 @@ func handleChatMouse(m model, msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // handleMouseMsg is the top-level mouse dispatcher. Callers must ensure
 // !m.pluginProcessing. inputMode must be inputNone except for inputHelp,
-// which routes wheel events to the help viewport.
+// which routes wheel events to the help viewport and ignores everything
+// else — the help overlay sits on top of the (hidden) editor, and without
+// this, clicks and drags would fall through to hitTestPanel/handleEditorMouse
+// below and act on the editor underneath, including auto-copying whatever
+// text a drag happens to select there.
 func handleMouseMsg(m model, msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.inputMode == inputHelp &&
-		(msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown) {
-		var cmd tea.Cmd
-		m.helpViewport, cmd = m.helpViewport.Update(msg)
-		return m, cmd
+	if m.inputMode == inputHelp {
+		if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+			var cmd tea.Cmd
+			m.helpViewport, cmd = m.helpViewport.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 	}
 	hit, localX, localY, ok := hitTestPanel(m.treeWidth, m.chatWidth, m.width, m.height, msg.X, msg.Y)
 	if !ok {
@@ -308,6 +327,10 @@ func handleMouseMsg(m model, msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	switch hit {
 	case treePanel:
+		// The left column is split: tree above m.treeHeight, button bar below.
+		if localY >= m.treeHeight {
+			return handleButtonBarMouse(m, localY-m.treeHeight, msg)
+		}
 		return handleTreeMouse(m, localY, msg)
 	case chatPanelHit:
 		return handleChatMouse(m, msg)

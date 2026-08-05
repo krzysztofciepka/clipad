@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -142,6 +141,12 @@ func (m model) handlePaneMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handlePluginReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
+		// right pane → left pane → button bar → right pane
+		if m.paneFocus == paneFocusLeft && m.barHeight > 0 {
+			m.buttonFocused = true
+			m.buttonCursor = 0
+			return m, nil
+		}
 		m.paneFocus = togglePaneFocus(m.paneFocus)
 		return m, nil
 	case "up", "k":
@@ -151,9 +156,7 @@ func (m model) handlePluginReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scrollFocusedPane(true, 1)
 		return m, nil
 	case "c":
-		_ = clipboard.WriteAll(m.pluginDiffResult)
-		m.errMsg = "Review copied"
-		return m, nil
+		return m, m.copyReview()
 	case "esc", "q":
 		m.closePluginRun("")
 		return m, nil

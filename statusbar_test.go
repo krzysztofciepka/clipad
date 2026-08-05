@@ -122,3 +122,11 @@ func TestFitMetricsDropsTokens(t *testing.T) {
 		t.Errorf("budget 3: got %q, want \"\"", got)
 	}
 }
+
+func TestViewShowsCopiedFlash(t *testing.T) {
+	sb := StatusBar{width: 120, filename: "note.md", flashMsg: "Copied"}
+	out := sb.View()
+	if !strings.Contains(out, "Copied") {
+		t.Errorf("View() = %q, want it to contain %q", out, "Copied")
+	}
+}

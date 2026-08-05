@@ -6,6 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/atotto/clipboard"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type clipOp int
@@ -52,5 +56,47 @@ func uniquePath(path string) string {
 		if _, err := os.Stat(candidate); os.IsNotExist(err) {
 			return candidate
 		}
+	}
+}
+
+// writeClipboard writes text to the system clipboard. Indirected through a
+// variable so tests can observe copies without clobbering the real clipboard.
+var writeClipboard = clipboard.WriteAll
+
+// copyFlashMsg clears the "Copied" status-bar confirmation.
+type copyFlashMsg struct{}
+
+// copyFlashTick fades the copy confirmation after the same delay as the
+// auto-save and git-sync flashes.
+func copyFlashTick() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		return copyFlashMsg{}
+	})
+}
+
+// flashCopied shows the green "Copied" confirmation in the status bar and
+// returns the command that clears it. Clears any lingering m.errMsg: the
+// status bar renders errMsg instead of the flash while errMsg is non-empty,
+// and errMsg is sticky (only cleared on file open/save), so without this a
+// stale message like "select text first" would permanently suppress the
+// flash. This mirrors the rest of the codebase's convention of clearing
+// errMsg on a fresh user action.
+func (m *model) flashCopied() tea.Cmd {
+	m.errMsg = ""
+	m.copyFlash = true
+	return copyFlashTick()
+}
+
+// flashText resolves which non-error flash the status bar shows. The copy
+// confirmation wins: it acknowledges an explicit user action, where auto-save
+// and git-sync are background events the user did not just trigger.
+func flashText(copyFlash, autoSaveFlash bool, gitSyncFlash string) string {
+	switch {
+	case copyFlash:
+		return "Copied"
+	case autoSaveFlash:
+		return "Auto-saved"
+	default:
+		return gitSyncFlash
 	}
 }

@@ -489,6 +489,10 @@ func TestSelectableEditor_ReplaceSelectionIsUndoable(t *testing.T) {
 }
 
 func TestSelectableEditor_CutIsUndoable(t *testing.T) {
+	old := writeClipboard
+	defer func() { writeClipboard = old }()
+	writeClipboard = func(string) error { return nil }
+
 	e := newSelectableEditor()
 	setEditorSize(&e, 80, 10)
 	e.SetValue("abc")
@@ -767,5 +771,75 @@ func TestEditorImageBlockDoesNotOverflowHeight(t *testing.T) {
 	rows := strings.Count(out, "\n") + 1
 	if rows > height {
 		t.Errorf("render emitted %d visual rows, want <= height %d:\n%s", rows, height, out)
+	}
+}
+
+func TestPasteTextInsertsAtCursor(t *testing.T) {
+	e := newSelectableEditor()
+	e.SetValue("ac")
+	setEditorSize(&e, 80, 10)
+	e.moveTo(0, 1)
+
+	e.PasteText("b")
+
+	if e.Value() != "abc" {
+		t.Errorf("Value = %q, want %q", e.Value(), "abc")
+	}
+}
+
+func TestBracketedPasteIsItsOwnUndoStep(t *testing.T) {
+	e := newSelectableEditor()
+	e.SetValue("")
+	setEditorSize(&e, 80, 10)
+
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	if e.Value() != "ab" {
+		t.Fatalf("after typing = %q, want %q", e.Value(), "ab")
+	}
+
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("XY"), Paste: true})
+	if e.Value() != "abXY" {
+		t.Fatalf("after paste = %q, want %q", e.Value(), "abXY")
+	}
+
+	e.Undo()
+	if e.Value() != "ab" {
+		t.Errorf("after undo = %q, want %q — a terminal paste must undo "+
+			"on its own, not together with the typing before it", e.Value(), "ab")
+	}
+}
+
+func TestBracketedPasteWithNewlines(t *testing.T) {
+	e := newSelectableEditor()
+	e.SetValue("")
+	setEditorSize(&e, 80, 10)
+
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("one\ntwo"), Paste: true})
+
+	if e.Value() != "one\ntwo" {
+		t.Errorf("Value = %q, want %q", e.Value(), "one\ntwo")
+	}
+}
+
+func TestBracketedPasteReplacesSelectionInOneUndo(t *testing.T) {
+	e := newSelectableEditor()
+	e.SetValue("hello world")
+	setEditorSize(&e, 80, 10)
+	e.StartMouseDrag(0, 0)
+	e.UpdateMouseDrag(0, 5)
+	e.EndMouseDrag()
+
+	e.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("bye"), Paste: true})
+	if e.Value() != "bye world" {
+		t.Fatalf("after paste = %q, want %q", e.Value(), "bye world")
+	}
+	if e.selActive {
+		t.Error("selection should be cleared after a paste replaces it")
+	}
+
+	e.Undo()
+	if e.Value() != "hello world" {
+		t.Errorf("after undo = %q, want %q", e.Value(), "hello world")
 	}
 }

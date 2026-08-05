@@ -380,7 +380,7 @@ func (e *SelectableEditor) moveWordRight() {
 
 func (e *SelectableEditor) copyToClipboard(text string) {
 	e.textClip = text
-	clipboard.WriteAll(text)
+	writeClipboard(text)
 }
 
 func (e *SelectableEditor) readFromClipboard() string {
@@ -412,10 +412,12 @@ func (e *SelectableEditor) Cut() {
 	e.commitOp(pre)
 }
 
-func (e *SelectableEditor) Paste() tea.Cmd {
-	text := e.readFromClipboard()
+// PasteText inserts text at the cursor as a single undo operation, replacing
+// any active selection first. recordOp uses editKindOp, which always starts a
+// new undo group, so a paste never merges into surrounding typing.
+func (e *SelectableEditor) PasteText(text string) {
 	if text == "" {
-		return nil
+		return
 	}
 	pre := e.recordOp()
 	if e.selActive {
@@ -427,6 +429,10 @@ func (e *SelectableEditor) Paste() tea.Cmd {
 	}
 	e.InsertString(text)
 	e.commitOp(pre)
+}
+
+func (e *SelectableEditor) Paste() tea.Cmd {
+	e.PasteText(e.readFromClipboard())
 	return nil
 }
 
@@ -525,6 +531,15 @@ func (e *SelectableEditor) adjustViewOffset() {
 func (e *SelectableEditor) HandleKey(msg tea.KeyMsg) tea.Cmd {
 	defer e.syncVisualYOffset()
 	key := msg.String()
+
+	// A terminal paste (Ctrl+Shift+V) arrives as one KeyRunes message
+	// carrying every rune, newlines included. Insert it as a single undo
+	// operation instead of letting the typing path below merge it into the
+	// surrounding edit group.
+	if msg.Type == tea.KeyRunes && msg.Paste {
+		e.PasteText(string(msg.Runes))
+		return nil
+	}
 
 	switch key {
 	case "ctrl+z":

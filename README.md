@@ -8,6 +8,7 @@ Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss,
 
 - **File tree** with nested folders, expand/collapse, fuzzy search
 - **Markdown editor** with line numbers and preview rendering
+- **Auto-copy on highlight** — selecting text with the mouse copies it to the system clipboard, confirmed by a green `Copied` flash in the status bar
 - **Inline images** — paste a screenshot with `Ctrl+V` and see it as real pixels in the editor and preview
 - **Plugin system** with OpenRouter and OpenCode Zen integrations for LLM-powered note transformation (rephrase, translate, redraft)
 - **AI shortcuts** with two modes per shortcut: *replace* (diff + accept) or *review* (read-only side-by-side commentary that never edits the note)
@@ -118,6 +119,19 @@ clipad path/to/dir/         # start a new note in that directory
 | `Ctrl+D` | Delete file or folder |
 | `Ctrl+F` | Create folder |
 
+### Button bar
+
+The bottom of the left pane carries a bar of clickable buttons. In ordinary use it offers **Find & replace**, **AI tools**, **Ask**, and **AI search** — the same actions as `Ctrl+R`, `Ctrl+G`, `Ctrl+K`, and `Ctrl+T`. It changes with the mode: **Approve** / **Reject** in the diff view, **Copy** in the review view, and **Input** / **Prev cite** / **Next cite** while the agent panel is open.
+
+Click the `[-]` on the bar's top rule to minify it to a single row and give the space back to the file tree; `[+]` restores it. The file tree scrolls inside whatever room is left, so the bar is always on screen. `Ctrl+B` hides the left pane and the bar with it.
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Focus the bar (file tree → bar → editor) |
+| `Up/Down` | Move between buttons |
+| `Enter` / `Space` | Activate the focused button |
+| `Esc` | Return focus to the file tree |
+
 ### Editor
 
 | Key | Action |
@@ -139,6 +153,8 @@ clipad path/to/dir/         # start a new note in that directory
 | Click on file in tree | Move tree cursor and open file in preview |
 | Click on folder in tree | Expand / collapse the folder |
 | Wheel up / down in tree | Scroll tree |
+| Click a button in the bar | Run that action |
+| Click `[-]` / `[+]` | Collapse / expand the button bar |
 
 Terminal-native selection (dragging with the OS to copy outside the app) is disabled while clipad has the mouse. Most terminals still allow Shift+drag to bypass the app and use the OS selection.
 

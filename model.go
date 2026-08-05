@@ -95,6 +95,12 @@ type model struct {
 	treeHeight int
 	treeHidden bool // per-session toggle for Ctrl+B
 
+	// Left-pane button bar (below the file tree)
+	buttonsCollapsed bool // minified to the toggle rule row; per-session
+	buttonFocused    bool // keyboard focus is on the bar
+	buttonCursor     int  // 0 = toggle rule row, 1..N = buttons
+	barHeight        int  // rows the bar occupies; 0 when there is no left pane
+
 	editor       SelectableEditor
 	editorWidth  int
 	editorHeight int
@@ -133,6 +139,7 @@ type model struct {
 
 	fileClip      fileClipboard
 	autoSaveFlash bool
+	copyFlash     bool
 
 	// Plugin system
 	plugins            []Plugin
@@ -200,6 +207,8 @@ type model struct {
 	chatInput     textinput.Model
 	chatViewport  viewport.Model
 	chatStreaming bool
+
+	chatCiteCursor int // 1-based cursor into the newest cited turn; 0 = none yet
 
 	// Agent (the Ctrl+K panel runs an agentic tool-calling loop)
 	agentMessages []agentMessage    // full OpenAI conversation incl. system
@@ -414,6 +423,7 @@ func (m *model) closePluginRun(msg string) {
 	m.pluginActive = nil
 	m.pluginDiffOriginal = ""
 	m.pluginDiffResult = ""
+	m.syncBarLayout()
 }
 
 // aiInputContent returns the content to feed to an AI run plus a flag the
@@ -587,6 +597,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.autoSaveFlash = false
 		return m, nil
 
+	case copyFlashMsg:
+		m.copyFlash = false
+		return m, nil
+
 	case gitSyncCheckMsg:
 		if m.gitSyncRunning {
 			return m, gitSyncCheck()
@@ -699,6 +713,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return handleMouseMsg(m, msg)
 		}
 		if m.inputMode == inputPluginReview || m.inputMode == inputPluginDiff {
+			// The bar gets first refusal: handlePaneMouse otherwise claims
+			// every event in these modes, including clicks on Approve/Reject.
+			if row, ok := m.buttonBarRowAt(msg.X, msg.Y); ok {
+				return handleButtonBarMouse(m, row, msg)
+			}
 			return m.handlePaneMouse(msg)
 		}
 		if m.inputMode != inputNone {
@@ -730,6 +749,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m, nil
+		}
+
+		// Before the input-mode dispatch, so the bar can keep focus inside
+		// the diff and review views.
+		if mm, cmd, handled := m.handleButtonKeys(msg); handled {
+			return mm, cmd
 		}
 
 		if m.inputMode != inputNone {
@@ -765,7 +790,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 				}
+				// SelectedText returns "" when no selection is active, so this
+				// covers both "nothing selected" and "selection spans nothing".
+				if m.editor.SelectedText() == "" {
+					return m, nil
+				}
 				m.editor.Copy()
+				return m, m.flashCopied()
 			}
 			return m, nil
 
@@ -785,7 +816,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 				}
+				// Checked before Cut, which clears the selection as it works.
+				if m.editor.SelectedText() == "" {
+					return m, nil
+				}
 				m.editor.Cut()
+				return m, m.flashCopied()
 			}
 			return m, nil
 
@@ -816,14 +852,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+r":
-			if m.currentFile != "" || m.newNoteDir != "" {
-				m.inputMode = inputReplaceSearch
-				m.replaceSearchInput.SetValue("")
-				m.replaceSearchTerm = ""
-				cmd := m.replaceSearchInput.Focus()
-				return m, cmd
-			}
-			return m, nil
+			return m, m.startFindReplace()
 
 		case "ctrl+p":
 			return m.togglePreview()
@@ -854,17 +883,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+g":
-			if m.currentFile != "" || m.newNoteDir != "" {
-				m.shortcuts, _ = loadShortcuts()
-				// Re-scan every open so patterns added to the fabric directory
-				// show up without restarting clipad.
-				m.fabricPatterns = listFabricPatterns(fabricPatternsDir())
-				m.shortcutFilterInput.SetValue("")
-				m.inputMode = inputShortcutSelect
-				m.shortcutCursor = clampSelectableRow(m.shortcutRows(), 0)
-				m.shortcutOffset = 0
-			}
-			return m, nil
+			return m, m.openShortcutPicker()
 
 		case "ctrl+l":
 			if m.currentFile != "" || m.newNoteDir != "" {
@@ -884,36 +903,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+t":
-			if m.indexer == nil || m.indexer.embedder == nil {
-				m.errMsg = "Configure embedding_provider in config.toml"
-				return m, nil
-			}
-			m.inputMode = inputVaultSearch
-			m.vaultSearchInput.SetValue("")
-			m.vaultSearchResults = nil
-			m.vaultSearchCursor = 0
-			m.vaultSearchOffset = 0
-			cmd := m.vaultSearchInput.Focus()
-			return m, cmd
+			return m, m.openVaultSearch()
 
 		case "ctrl+k":
-			if m.chatOpen {
-				if m.agentCancel != nil {
-					m.agentCancel()
-					m.agentCancel = nil
-				}
-				m.chatStreaming = false
-				m.agentEvents = nil
-				m.chatOpen = false
-				m.chatInput.Blur()
-				m.recalcLayout()
-				return m, nil
-			}
-			m.chatOpen = true
-			m.chatMode = chatModeInput
-			m.recalcLayout()
-			cmd := m.chatInput.Focus()
-			return m, cmd
+			return m, m.toggleChat()
 
 		case "ctrl+j":
 			if m.vault == "" {
@@ -966,7 +959,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "tab":
+			// tree → button bar → editor → tree
 			if m.activePanel == treePanel {
+				if m.barHeight > 0 {
+					m.buttonFocused = true
+					m.buttonCursor = 0
+					m.editor.Blur()
+					return m, nil
+				}
 				m.activePanel = editorPanel
 				if m.editorMode == modeEdit {
 					cmd := m.editor.Focus()
@@ -1238,6 +1238,7 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Display turns.
 			m.chatTurns = append(m.chatTurns, chatTurn{Role: "user", Content: input})
 			m.chatTurns = append(m.chatTurns, chatTurn{Role: "assistant"})
+			m.chatCiteCursor = 0
 
 			// Resolve provider config.
 			provider := m.activeShortcutProvider
@@ -1295,9 +1296,7 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.recalcLayout()
 			return m, nil
 		case "i", "/":
-			m.chatMode = chatModeInput
-			cmd := m.chatInput.Focus()
-			return m, cmd
+			return m, m.chatFocusInput()
 		case "up", "k":
 			m.chatViewport.LineUp(1)
 			return m, nil
@@ -1310,6 +1309,7 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			n := int(s[0] - '0')
 			cite := mostRecentCitation(m.chatTurns, n)
 			if cite != nil {
+				m.chatCiteCursor = n
 				abs := filepath.Join(m.vault, cite.Path)
 				if m.isDirty() {
 					m.inputMode = inputUnsavedGuard
@@ -1349,6 +1349,7 @@ func (m model) handleAgentSlash(sc slashCommand) (tea.Model, tea.Cmd) {
 	case slashClear:
 		m.chatTurns = nil
 		m.agentMessages = nil
+		m.chatCiteCursor = 0
 		m.chatViewport.SetContent("")
 		return m, nil
 	case slashModel:
@@ -2014,10 +2015,6 @@ func (m model) togglePreview() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) recalcLayout() {
-	m.treeHeight = m.height - 2
-	if m.treeHeight < 1 {
-		m.treeHeight = 1
-	}
 	m.editorHeight = m.height - 2
 	if m.editorHeight < 1 {
 		m.editorHeight = 1
@@ -2078,8 +2075,9 @@ func (m *model) recalcLayout() {
 	m.chatWidth = chatWidth
 
 	m.tree.width = m.treeWidth
-	m.tree.height = m.treeHeight
-	m.tree.clampOffset()
+	// treeWidth is final here, so the bar knows whether there is a left pane.
+	// syncBarLayout sets treeHeight, m.tree.height and clamps the offset.
+	m.syncBarLayout()
 
 	setEditorSize(&m.editor, m.editorWidth, m.editorHeight)
 	m.editor.SetImageContext(m.imgReg, m.kittyImages, m.currentNoteDir())
@@ -2130,9 +2128,16 @@ func (m model) View() string {
 
 	var treeView string
 	if m.treeWidth > 0 {
-		treeView = m.tree.View(m.activePanel == treePanel)
+		// Passing !m.buttonFocused keeps the tree from drawing its own cursor
+		// highlight while the bar owns focus — two highlights read as two cursors.
+		treeView = m.tree.View(m.activePanel == treePanel && !m.buttonFocused)
 		if m.inputMode == inputFilter {
 			treeView = m.filterView()
+		}
+		if m.barHeight > 0 {
+			bar := buttonBarView(m.barButtons(), m.barHeight, m.treeWidth,
+				m.barInert(), m.buttonFocused, m.buttonCursor)
+			treeView = lipgloss.JoinVertical(lipgloss.Left, treeView, bar)
 		}
 	}
 
@@ -2254,11 +2259,7 @@ func (m model) View() string {
 	if m.editor.selActive {
 		sb.selectionText = m.editor.SelectedText()
 	}
-	if m.autoSaveFlash {
-		sb.flashMsg = "Auto-saved"
-	} else if m.gitSyncFlash != "" {
-		sb.flashMsg = m.gitSyncFlash
-	}
+	sb.flashMsg = flashText(m.copyFlash, m.autoSaveFlash, m.gitSyncFlash)
 	if m.gitSyncError != "" {
 		sb.errMsg = m.gitSyncError
 	}
@@ -2403,7 +2404,10 @@ func (m model) filterView() string {
 		}
 	}
 
-	return treePanelStyle.Width(m.treeWidth).MaxHeight(m.treeHeight).Render(b.String())
+	// Height as well as MaxHeight: without it a short result list lets the
+	// button bar float up mid-column, leaving the left column shorter than
+	// the editor.
+	return treePanelStyle.Width(m.treeWidth).Height(m.treeHeight).MaxHeight(m.treeHeight).Render(b.String())
 }
 
 func wordWrap(s string, width int) string {

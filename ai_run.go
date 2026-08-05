@@ -58,6 +58,7 @@ func (m *model) startAIRun(run aiRun, provider string, cfg map[string]string) te
 	} else {
 		m.inputMode = inputPluginDiff
 	}
+	m.syncBarLayout() // the bar swaps to Approve/Reject or Copy
 	chunks, errs := run.start(ctx, content, provider, cfg)
 	m.activeChunks = chunks
 	return streamPluginCmd(chunks, errs)
