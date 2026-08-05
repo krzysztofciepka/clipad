@@ -9,7 +9,7 @@ Built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Lipgloss,
 - **File tree** with nested folders, expand/collapse, fuzzy search
 - **Markdown editor** with line numbers and preview rendering
 - **Inline images** — paste a screenshot with `Ctrl+V` and see it as real pixels in the editor and preview
-- **Plugin system** with blackbox.ai and OpenRouter integrations for LLM-powered note transformation (rephrase, translate, redraft)
+- **Plugin system** with OpenRouter and OpenCode Zen integrations for LLM-powered note transformation (rephrase, translate, redraft)
 - **AI shortcuts** with two modes per shortcut: *replace* (diff + accept) or *review* (read-only side-by-side commentary that never edits the note)
 - **Find & replace** with live highlighting and match count
 - **Side-by-side diff view** for reviewing plugin changes, plus a read-only review view for commentary-style shortcuts
@@ -102,6 +102,7 @@ clipad path/to/dir/         # start a new note in that directory
 | `Tab` | Switch panels |
 | `Ctrl+Space` | Open plugin selector |
 | `Ctrl+G` | Open AI shortcut selector |
+| `/` (in picker) | Filter shortcuts and fabric patterns |
 | `Ctrl+L` | Create AI shortcut |
 | `Ctrl+K` | Open the notes **agent** panel (ask about or manage your notes) |
 
@@ -200,18 +201,6 @@ If neither is installed, clipad tells you so in the status bar and `Ctrl+V` stil
 
 Plugins process your notes through external services. Press `Ctrl+Space` to open the plugin selector.
 
-### Blackbox
-
-LLM-powered note transformation via [blackbox.ai](https://blackbox.ai). Supports any model available on the platform.
-
-On first use, you'll be prompted for:
-- **API Key** - your blackbox.ai API key
-- **Model** - e.g. `blackboxai/minimax/minimax-m2.5`
-
-After processing, a side-by-side diff shows the original and modified note. Press `y` to accept or `n` to reject.
-
-Plugin config is stored at `~/.config/clipad/plugins/blackbox.toml`.
-
 ### OpenRouter
 
 LLM-powered note transformation via [OpenRouter](https://openrouter.ai). Supports any model available on the platform.
@@ -219,6 +208,8 @@ LLM-powered note transformation via [OpenRouter](https://openrouter.ai). Support
 On first use, you'll be prompted for:
 - **API Key** - your OpenRouter API key
 - **Model** - e.g. `openai/gpt-4o`, `anthropic/claude-sonnet-4`
+
+After processing, a side-by-side diff shows the original and modified note. Press `y` to accept or `n` to reject.
 
 Plugin config is stored at `~/.config/clipad/plugins/openrouter.toml`.
 
@@ -230,7 +221,29 @@ If text is selected when you trigger a plugin or shortcut, only the selected tex
 
 Shortcuts live in `~/.config/clipad/ai_shortcuts.toml` as `[[shortcuts]]` blocks (`name` + `prompt`). On first run the file is seeded with a default library of 23 shortcuts; you can edit, delete, or add entries freely afterward — clipad never overwrites your file.
 
-**Switching providers.** Inside the shortcut picker, press `p` to cycle the active AI provider (Blackbox ⇄ OpenRouter). The current provider is shown in the picker hint line and persisted to `~/.config/clipad/config.toml` as `ai_shortcut_provider`. If you select a provider that has not been configured yet, the next shortcut run will trigger its setup wizard.
+**Switching providers.** Inside the shortcut picker, press `p` to cycle the active AI provider (OpenRouter ⇄ OpenCode Zen). The current provider is shown in the picker hint line and persisted to `~/.config/clipad/config.toml` as `ai_shortcut_provider`. If you select a provider that has not been configured yet, the next shortcut run will trigger its setup wizard.
+
+**Fabric patterns.** If you have [fabric](https://github.com/danielmiessler/fabric)
+installed, the shortcut picker lists every pattern it finds under a
+`── Fabric patterns ──` heading. Clipad reads the pattern files directly — it never
+invokes the fabric CLI — so a pattern runs through whichever AI provider your
+shortcuts use, not fabric's own model config. The pattern's `system.md` becomes the
+system prompt and your note becomes the user message, which is how fabric itself
+invokes them.
+
+Patterns always open in the read-only review pane: most of them analyse or extract
+rather than rewrite, so replacing your note with their output would destroy it. Press
+`c` in the review to copy the result. Patterns cannot be edited, deleted, or
+reordered from clipad — edit the files under `~/.config/fabric/patterns/` instead.
+
+Clipad looks in `$FABRIC_CONFIG_HOME/patterns` when that variable is set, otherwise
+`~/.config/fabric/patterns`. Descriptions come from `pattern_explanations.md` in the
+same directory when fabric ships one. If fabric is not installed, the section simply
+does not appear.
+
+**Filtering.** With a few hundred patterns in the list, press `/` inside the picker to
+fuzzy-filter shortcuts and patterns by name. Arrows move, `Enter` runs, `Esc` clears
+the filter.
 
 The default library covers:
 
@@ -244,7 +257,7 @@ The default library covers:
 
 Press `Ctrl+K` to open the agent — a continuous chat in the right-hand panel
 that can both answer questions about your notes and manage them. It uses your
-active AI provider (blackbox.ai by default) with native tool-calling and has two
+active AI provider (OpenRouter by default) with native tool-calling and has two
 tools:
 
 - **search_vault** — semantic search over your notes (cited inline; press `1`–`9`

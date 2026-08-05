@@ -26,6 +26,11 @@ var (
 
 	shortcutDescStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240"))
+
+	shortcutSectionStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Bold(true).
+		PaddingLeft(1)
 )
 
 func truncateRight(s string, max int) string {
@@ -42,23 +47,40 @@ func truncateRight(s string, max int) string {
 	return string(runes[:max-1]) + "…"
 }
 
-func shortcutSelectorView(shortcuts []AIShortcut, cursor int, provider string, width, height int) string {
-	if len(shortcuts) == 0 {
-		content := shortcutEmptyStyle.Render("No shortcuts. Press Ctrl+L to create one.")
-		return lipgloss.NewStyle().
-			Width(width).
-			Height(height).
-			Background(lipgloss.Color("236")).
-			Foreground(lipgloss.Color("252")).
-			Padding(0, 1).
-			Render(content)
+// maxShortcutNameCol caps the name column so long fabric pattern names cannot
+// squeeze the description column out of existence.
+const maxShortcutNameCol = 30
+
+// shortcutSelectorView renders the visible slice of picker rows. offset is the
+// first row shown; the caller keeps the cursor inside the window via
+// clampShortcutOffset.
+func shortcutSelectorView(rows []shortcutRow, cursor, offset int, provider string, filtering bool, width, height int) string {
+	box := lipgloss.NewStyle().
+		Width(width).
+		MaxHeight(height).
+		Background(lipgloss.Color("236")).
+		Foreground(lipgloss.Color("252")).
+		Padding(0, 1)
+
+	if len(rows) == 0 {
+		msg := "No shortcuts. Press Ctrl+L to create one."
+		if filtering {
+			msg = "No matches."
+		}
+		return box.Height(height).Render(shortcutEmptyStyle.Render(msg))
 	}
 
 	maxName := 0
-	for _, s := range shortcuts {
-		if n := len([]rune(s.Name)); n > maxName {
+	for _, r := range rows {
+		if r.kind == rowHeader {
+			continue
+		}
+		if n := len([]rune(r.name)); n > maxName {
 			maxName = n
 		}
+	}
+	if maxName > maxShortcutNameCol {
+		maxName = maxShortcutNameCol
 	}
 	nameCol := maxName + 2
 
@@ -67,34 +89,41 @@ func shortcutSelectorView(shortcuts []AIShortcut, cursor int, provider string, w
 		descBudget = 0
 	}
 
-	var rows []string
-	for i, s := range shortcuts {
-		namePart := s.Name + strings.Repeat(" ", nameCol-len([]rune(s.Name)))
+	if offset < 0 || offset >= len(rows) {
+		offset = 0
+	}
+	end := offset + visibleShortcutRows(height)
+	if end > len(rows) {
+		end = len(rows)
+	}
+
+	var out []string
+	for i := offset; i < end; i++ {
+		r := rows[i]
+		if r.kind == rowHeader {
+			out = append(out, shortcutSectionStyle.Render(r.name))
+			continue
+		}
+		name := truncateRight(r.name, maxName)
+		namePart := name + strings.Repeat(" ", nameCol-len([]rune(name)))
 		var line string
 		if i == cursor {
 			line = shortcutCursorStyle.Render("> " + namePart)
 		} else {
 			line = shortcutItemStyle.Render("  " + namePart)
 		}
-		if s.Description != "" {
-			desc := truncateRight(s.Description, descBudget)
-			if desc != "" {
+		if r.description != "" {
+			if desc := truncateRight(r.description, descBudget); desc != "" {
 				line += shortcutDescStyle.Render("— " + desc)
 			}
 		}
-		rows = append(rows, line)
+		out = append(out, line)
 	}
 
-	items := strings.Join(rows, "\n")
 	providerLine := shortcutHintStyle.Render("Provider: " + provider + "  (p:cycle)")
-	hint := shortcutHintStyle.Render("Enter:run  e:edit  d:delete  Ctrl+↑/↓:reorder  Esc:close")
-	content := items + "\n" + providerLine + "\n" + hint
-
-	return lipgloss.NewStyle().
-		Width(width).
-		MaxHeight(height).
-		Background(lipgloss.Color("236")).
-		Foreground(lipgloss.Color("252")).
-		Padding(0, 1).
-		Render(content)
+	hint := shortcutHintStyle.Render("Enter:run  /:filter  e:edit  d:delete  Ctrl+↑/↓:reorder  Esc:close")
+	if filtering {
+		hint = shortcutHintStyle.Render("Enter:run  ↑/↓:move  Esc:clear filter")
+	}
+	return box.Render(strings.Join(out, "\n") + "\n" + providerLine + "\n" + hint)
 }

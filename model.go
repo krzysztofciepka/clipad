@@ -77,6 +77,7 @@ const (
 	inputDelegateName
 	inputTemplatePick
 	inputTemplateName
+	inputShortcutFilter
 )
 
 type model struct {
@@ -152,14 +153,17 @@ type model struct {
 
 	// AI shortcuts
 	shortcuts                []AIShortcut
-	shortcutCursor           int
+	fabricPatterns           []FabricPattern
+	shortcutCursor           int // indexes picker rows, not m.shortcuts
+	shortcutOffset           int
+	shortcutFilterInput      textinput.Model
 	shortcutEditing          int
 	shortcutTempName         string
 	shortcutTempDescription  string
 	shortcutTempPrompt       string
 	shortcutTypeCursor       int
 	aiRunOnSelection         bool
-	shortcutPending          bool // true when shortcut awaits provider config completion
+	pendingAIRun             *aiRun // set when a picker run waits on the provider config wizard
 	shortcutNameInput        textinput.Model
 	shortcutDescriptionInput textinput.Model
 	shortcutPromptInput      textinput.Model
@@ -256,6 +260,10 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 	sp.Placeholder = "prompt template"
 	sp.CharLimit = 500
 
+	sfi := textinput.New()
+	sfi.Placeholder = "filter shortcuts and patterns…"
+	sfi.CharLimit = 128
+
 	gr := textinput.New()
 	gr.Placeholder = "git@github.com:user/vault.git"
 	gr.CharLimit = 512
@@ -299,9 +307,10 @@ func newModel(vault string, plugins []Plugin, activeShortcutProvider, inboxPath 
 		shortcutNameInput:        sn,
 		shortcutDescriptionInput: sd,
 		shortcutPromptInput:      sp,
+		shortcutFilterInput:      sfi,
 		shortcutEditing:          -1,
 		gitRemoteInput:           gr,
-		activeShortcutProvider:   activeShortcutProvider,
+		activeShortcutProvider:   resolveShortcutProvider(activeShortcutProvider, plugins),
 		vaultSearchInput:         vsi,
 		chatInput:                ci,
 		captureInput:             cap,
@@ -847,8 +856,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+g":
 			if m.currentFile != "" || m.newNoteDir != "" {
 				m.shortcuts, _ = loadShortcuts()
+				// Re-scan every open so patterns added to the fabric directory
+				// show up without restarting clipad.
+				m.fabricPatterns = listFabricPatterns(fabricPatternsDir())
+				m.shortcutFilterInput.SetValue("")
 				m.inputMode = inputShortcutSelect
-				m.shortcutCursor = 0
+				m.shortcutCursor = clampSelectableRow(m.shortcutRows(), 0)
+				m.shortcutOffset = 0
 			}
 			return m, nil
 
@@ -1155,6 +1169,8 @@ func (m model) handleInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePluginReview(msg)
 	case inputShortcutSelect:
 		return m.handleShortcutSelect(msg)
+	case inputShortcutFilter:
+		return m.handleShortcutFilter(msg)
 	case inputShortcutName:
 		return m.handleShortcutName(msg)
 	case inputShortcutDescription:
@@ -1234,10 +1250,7 @@ func (m model) handleChatPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.chatTurns = m.chatTurns[:len(m.chatTurns)-2] // roll back user+assistant
 				return m, nil
 			}
-			url := defaultBlackboxURL
-			if provider == "openrouter" {
-				url = defaultOpenRouterURL
-			}
+			url := shortcutProviderURL(provider)
 
 			// Build the request conversation as a local slice. Persisted history
 			// (m.agentMessages) is only committed on evDone, so a cancel or error
@@ -2148,8 +2161,9 @@ func (m model) View() string {
 			Foreground(lipgloss.Color("252")).
 			Padding(0, 1).
 			Render(m.helpViewport.View())
-	} else if m.inputMode == inputShortcutSelect {
-		rightView = shortcutSelectorView(m.shortcuts, m.shortcutCursor, m.activeShortcutProvider, m.editorWidth, m.editorHeight)
+	} else if m.inputMode == inputShortcutSelect || m.inputMode == inputShortcutFilter {
+		rightView = shortcutSelectorView(m.shortcutRows(), m.shortcutCursor, m.shortcutOffset,
+			m.activeShortcutProvider, m.inputMode == inputShortcutFilter, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputShortcutType {
 		rightView = shortcutTypeSelectorView(m.shortcutTypeCursor, m.editorWidth, m.editorHeight)
 	} else if m.inputMode == inputTemplatePick {
@@ -2306,10 +2320,13 @@ func (m model) View() string {
 	} else if m.inputMode == inputShortcutPrompt {
 		statusView = statusBarStyle.Width(m.width).Render(
 			"Prompt: " + m.shortcutPromptInput.View())
+	} else if m.inputMode == inputShortcutFilter {
+		statusView = statusBarStyle.Width(m.width).Render(
+			"Filter: " + m.shortcutFilterInput.View())
 	} else if m.inputMode == inputShortcutDeleteConfirm {
 		name := ""
-		if m.shortcutCursor < len(m.shortcuts) {
-			name = m.shortcuts[m.shortcutCursor].Name
+		if i := m.selectedShortcutIndex(); i >= 0 {
+			name = m.shortcuts[i].Name
 		}
 		statusView = statusBarStyle.Width(m.width).Render(
 			fmt.Sprintf("Delete shortcut %q? (y/n)", name))

@@ -63,28 +63,17 @@ func (m model) handlePluginConfig(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err := savePluginConfig(m.pluginActive.Name(), m.pluginConfigValues); err != nil {
 				m.errMsg = "Failed to save plugin config: " + err.Error()
 				m.inputMode = inputNone
-				m.shortcutPending = false
+				m.pendingAIRun = nil
 				return m, nil
 			}
-			// If config was triggered from a shortcut, execute the pending shortcut
-			if m.shortcutPending {
-				m.shortcutPending = false
-				shortcut := m.shortcuts[m.shortcutCursor]
+			// If config was triggered from the shortcut picker, run what was
+			// waiting on it.
+			if m.pendingAIRun != nil {
+				run := *m.pendingAIRun
+				m.pendingAIRun = nil
 				provider := m.pluginActive.Name()
 				cfg, _ := loadPluginConfig(provider)
-				content, onSelection := m.aiInputContent()
-				m.aiRunOnSelection = onSelection
-				m.pluginDiffOriginal = content
-				m.pluginDiffResult = ""
-				m.pluginProcessing = true
-				ctx, cancel := context.WithCancel(context.Background())
-				m.pluginCancel = cancel
-				m.pluginDiffViewL, m.pluginDiffViewR = newDiffViewports(content, "", m.editorWidth, m.editorHeight)
-				m.paneFocus = paneFocusRight
-				m.inputMode = inputPluginDiff
-				chunks, errs := runShortcutStream(ctx, shortcut, content, provider, cfg)
-				m.activeChunks = chunks
-				return m, streamPluginCmd(chunks, errs)
+				return m, m.startAIRun(run, provider, cfg)
 			}
 			m.inputMode = inputPluginPrompt
 			m.pluginPromptInput.SetValue("")

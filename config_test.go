@@ -113,8 +113,8 @@ func TestLoadConfig_AIShortcutProviderDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadConfig() error: %v", err)
 	}
-	if loaded.AIShortcutProvider != "blackbox" {
-		t.Errorf("loaded.AIShortcutProvider = %q, want default %q", loaded.AIShortcutProvider, "blackbox")
+	if loaded.AIShortcutProvider != "openrouter" {
+		t.Errorf("loaded.AIShortcutProvider = %q, want default %q", loaded.AIShortcutProvider, "openrouter")
 	}
 }
 

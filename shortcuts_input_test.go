@@ -1,6 +1,10 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -306,5 +310,204 @@ func TestShortcutFlow_Type_JumpSelectKeys(t *testing.T) {
 	if m2.shortcutTypeCursor != shortcutTypeIndex("replace") {
 		t.Errorf("after 'r': shortcutTypeCursor = %d, want replace index (%d)",
 			m2.shortcutTypeCursor, shortcutTypeIndex("replace"))
+	}
+}
+
+func TestShortcutSelector_DownSkipsFabricHeader(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr", Prompt: "p"}}
+	m.fabricPatterns = []FabricPattern{{Name: "summarize"}}
+	m.shortcutCursor = 0
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyDown})
+	nm := next.(model)
+	if nm.shortcutCursor != 2 {
+		t.Errorf("cursor = %d, want 2 (header at row 1 skipped)", nm.shortcutCursor)
+	}
+}
+
+func TestShortcutSelector_EditOnPatternIsRejected(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr", Prompt: "p"}}
+	m.fabricPatterns = []FabricPattern{{Name: "summarize"}}
+	m.shortcutCursor = 2 // the pattern row
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	nm := next.(model)
+	if nm.inputMode != inputShortcutSelect {
+		t.Errorf("inputMode = %v, want inputShortcutSelect — patterns are not editable", nm.inputMode)
+	}
+	if nm.errMsg == "" {
+		t.Error("expected an errMsg explaining patterns are read-only")
+	}
+}
+
+func TestShortcutSelector_DeleteOnPatternIsRejected(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr", Prompt: "p"}}
+	m.fabricPatterns = []FabricPattern{{Name: "summarize"}}
+	m.shortcutCursor = 2
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	if next.(model).inputMode != inputShortcutSelect {
+		t.Error("'d' on a pattern row opened the delete confirmation")
+	}
+}
+
+func TestShortcutSelector_ReorderOnPatternIsRejected(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr", Prompt: "p"}}
+	m.fabricPatterns = []FabricPattern{{Name: "summarize"}, {Name: "explain"}}
+	m.shortcutCursor = 2 // first pattern row
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyCtrlDown})
+	nm := next.(model)
+	if nm.fabricPatterns[0].Name != "summarize" || nm.fabricPatterns[1].Name != "explain" {
+		t.Error("Ctrl+Down reordered the fabric patterns")
+	}
+	if nm.errMsg == "" {
+		t.Error("expected an errMsg explaining patterns are read-only")
+	}
+}
+
+func TestShortcutSelector_EnterOnPatternOpensReview(t *testing.T) {
+	cfgHome := t.TempDir()
+	t.Setenv("FABRIC_CONFIG_HOME", cfgHome)
+	patterns := filepath.Join(cfgHome, "patterns")
+	if err := os.MkdirAll(filepath.Join(patterns, "summarize"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(patterns, "summarize", "system.md"), []byte("# SYS"), 0o644); err != nil {
+		t.Fatalf("write system.md: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+	origURL := fabricStreamURL
+	fabricStreamURL = func(string) string { return server.URL }
+	defer func() { fabricStreamURL = origURL }()
+
+	m := newTestModel(t)
+	setEditorSize(&m.editor, 80, 10)
+	m.editor.SetValue("note body")
+	provider := defaultAIShortcutProvider
+	m.plugins = []Plugin{&fakePlugin{name: provider}}
+	m.activeShortcutProvider = provider
+	if err := savePluginConfig(provider, map[string]string{"api_key": "k", "model": "m"}); err != nil {
+		t.Fatalf("savePluginConfig: %v", err)
+	}
+	m.shortcuts = nil
+	m.fabricPatterns = listFabricPatterns(fabricPatternsDir())
+	if len(m.fabricPatterns) != 1 {
+		t.Fatalf("got %d patterns, want 1", len(m.fabricPatterns))
+	}
+	m.shortcutCursor = 1 // row 0 is the header
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(pressEnter())
+	nm := next.(model)
+	if nm.inputMode != inputPluginReview {
+		t.Errorf("inputMode = %v, want inputPluginReview", nm.inputMode)
+	}
+	if nm.aiRunOnSelection {
+		t.Error("aiRunOnSelection = true; a pattern run must never edit the note")
+	}
+}
+
+func TestSelectedShortcutIndex_MinusOneOnPatternRow(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr"}}
+	m.fabricPatterns = []FabricPattern{{Name: "summarize"}}
+	m.shortcutCursor = 0
+	if got := m.selectedShortcutIndex(); got != 0 {
+		t.Errorf("on a shortcut row = %d, want 0", got)
+	}
+	m.shortcutCursor = 1 // header
+	if got := m.selectedShortcutIndex(); got != -1 {
+		t.Errorf("on the header = %d, want -1", got)
+	}
+	m.shortcutCursor = 2 // pattern
+	if got := m.selectedShortcutIndex(); got != -1 {
+		t.Errorf("on a pattern row = %d, want -1", got)
+	}
+}
+
+func TestShortcutFilter_SlashEntersFilterMode(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr", Prompt: "p"}}
+	m.inputMode = inputShortcutSelect
+
+	next, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	if next.(model).inputMode != inputShortcutFilter {
+		t.Errorf("inputMode = %v, want inputShortcutFilter", next.(model).inputMode)
+	}
+}
+
+func TestShortcutFilter_TypingNarrowsRows(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr"}, {Name: "critique"}}
+	m.fabricPatterns = []FabricPattern{{Name: "summarize"}}
+	m.inputMode = inputShortcutSelect
+
+	// Enter filter mode through '/' so the input is focused, as it is in use.
+	entered, _ := m.handleShortcutSelect(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	next, _ := entered.(model).handleShortcutFilter(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	nm := next.(model)
+	if nm.shortcutFilterInput.Value() != "s" {
+		t.Fatalf("filter = %q, want s", nm.shortcutFilterInput.Value())
+	}
+	rows := nm.shortcutRows()
+	for _, r := range rows {
+		if r.kind == rowShortcut && r.name == "critique" {
+			t.Error("'critique' survived the 's' filter")
+		}
+	}
+	if nm.shortcutCursor < 0 || nm.shortcutCursor >= len(rows) {
+		t.Errorf("cursor = %d, out of range for %d rows", nm.shortcutCursor, len(rows))
+	}
+	if rows[nm.shortcutCursor].kind == rowHeader {
+		t.Error("cursor parked on the section header after filtering")
+	}
+}
+
+func TestShortcutFilter_EscClearsAndReturns(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "tldr"}}
+	m.inputMode = inputShortcutFilter
+	m.shortcutFilterInput.SetValue("zzz")
+
+	next, _ := m.handleShortcutFilter(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := next.(model)
+	if nm.inputMode != inputShortcutSelect {
+		t.Errorf("inputMode = %v, want inputShortcutSelect", nm.inputMode)
+	}
+	if nm.shortcutFilterInput.Value() != "" {
+		t.Errorf("filter = %q, want cleared", nm.shortcutFilterInput.Value())
+	}
+}
+
+func TestShortcutFilter_ArrowsNavigateWithoutLeavingFilter(t *testing.T) {
+	m := newTestModel(t)
+	m.shortcuts = []AIShortcut{{Name: "alpha"}, {Name: "alpine"}}
+	m.inputMode = inputShortcutFilter
+	m.shortcutCursor = 0
+
+	next, _ := m.handleShortcutFilter(tea.KeyMsg{Type: tea.KeyDown})
+	nm := next.(model)
+	if nm.inputMode != inputShortcutFilter {
+		t.Errorf("inputMode = %v, want to stay in inputShortcutFilter", nm.inputMode)
+	}
+	if nm.shortcutCursor != 1 {
+		t.Errorf("cursor = %d, want 1", nm.shortcutCursor)
+	}
+	if nm.shortcutFilterInput.Value() != "" {
+		t.Errorf("arrow key typed into the filter: %q", nm.shortcutFilterInput.Value())
 	}
 }

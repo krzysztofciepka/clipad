@@ -94,16 +94,14 @@ func saveShortcuts(shortcuts []AIShortcut) error {
 }
 
 // shortcutProviderURL maps a shortcut provider name to its chat-completion
-// endpoint. Unknown providers fall back to blackbox. Keep these cases in sync
-// with the registered Plugin endpoints (plugin_*.go).
+// endpoint. Unknown providers fall back to openrouter. Keep these cases in
+// sync with the registered Plugin endpoints (plugin_*.go).
 func shortcutProviderURL(provider string) string {
 	switch provider {
-	case "openrouter":
-		return defaultOpenRouterURL
 	case "opencode":
 		return defaultOpenCodeURL
 	default:
-		return defaultBlackboxURL
+		return defaultOpenRouterURL
 	}
 }
 

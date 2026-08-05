@@ -22,7 +22,7 @@ type Config struct {
 }
 
 const (
-	defaultAIShortcutProvider       = "blackbox"
+	defaultAIShortcutProvider       = "openrouter"
 	defaultEmbeddingProvider        = "openrouter"
 	defaultEmbeddingModelOpenRouter = "qwen/qwen3-embedding-8b"
 	defaultEmbeddingModelOllama     = "nomic-embed-text"

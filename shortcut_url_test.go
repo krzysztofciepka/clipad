@@ -7,11 +7,10 @@ func TestShortcutProviderURL(t *testing.T) {
 		provider string
 		want     string
 	}{
-		{"blackbox", defaultBlackboxURL},
 		{"openrouter", defaultOpenRouterURL},
 		{"opencode", defaultOpenCodeURL},
-		{"unknown", defaultBlackboxURL}, // unknown providers fall back to blackbox
-		{"", defaultBlackboxURL},
+		{"unknown", defaultOpenRouterURL}, // unknown providers fall back to openrouter
+		{"", defaultOpenRouterURL},
 	}
 	for _, c := range cases {
 		if got := shortcutProviderURL(c.provider); got != c.want {

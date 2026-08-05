@@ -24,6 +24,18 @@ func pluginByName(plugins []Plugin, name string) Plugin {
 	return nil
 }
 
+// resolveShortcutProvider maps a configured provider name onto a registered
+// plugin. A config naming a provider that no longer ships (blackbox, removed
+// in favour of openrouter) resolves to the default instead of failing at run
+// time. The config file is left alone; the resolved value is persisted the
+// next time the user cycles providers with 'p'.
+func resolveShortcutProvider(name string, plugins []Plugin) string {
+	if pluginByName(plugins, name) != nil {
+		return name
+	}
+	return defaultAIShortcutProvider
+}
+
 func cycleShortcutProvider(current string, available []string) string {
 	if len(available) == 0 {
 		return current

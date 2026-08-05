@@ -162,7 +162,6 @@ func main() {
 	}
 
 	plugins := []Plugin{
-		&BlackboxPlugin{},
 		&OpenRouterPlugin{},
 		&OpenCodePlugin{},
 	}

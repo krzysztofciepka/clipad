@@ -77,7 +77,8 @@ var helpSections = []helpSection{
 	{
 		title: "Shortcut Picker",
 		entries: []helpEntry{
-			{"Enter", "Run shortcut"},
+			{"Enter", "Run shortcut or fabric pattern"},
+			{"/", "Filter shortcuts and fabric patterns"},
 			{"e", "Edit shortcut"},
 			{"d", "Delete shortcut"},
 			{"Ctrl+↑ / Ctrl+↓", "Reorder shortcut"},
