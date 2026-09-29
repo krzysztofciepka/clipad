@@ -1074,7 +1074,7 @@ func (m model) handleTreeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cmd := m.renameInput.Focus()
 			return m, cmd
 		}
-	case "ctrl+f":
+	case "alt+f":
 		m.inputMode = inputNewFolder
 		m.newFolderInput.SetValue("")
 		cmd := m.newFolderInput.Focus()

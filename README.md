@@ -217,7 +217,7 @@ clipad path/to/dir/         # start a new note in that directory
 | `/` | Fuzzy filter |
 | `Ctrl+E` | Rename file or folder |
 | `Ctrl+D` | Delete file or folder |
-| `Ctrl+F` | Create folder |
+| `Alt+F` | Create folder |
 
 ### Button bar
 

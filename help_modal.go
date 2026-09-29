@@ -65,7 +65,7 @@ var helpSections = []helpSection{
 			{"/", "Fuzzy filter"},
 			{"Ctrl+E", "Rename"},
 			{"Ctrl+D", "Delete file or folder"},
-			{"Ctrl+F", "New folder"},
+			{"Alt+F", "New folder"},
 		},
 	},
 	{
